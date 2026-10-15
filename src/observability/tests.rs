@@ -1,4 +1,5 @@
 use super::*;
+use std::os::unix::fs::DirBuilderExt as _;
 use std::os::unix::fs::PermissionsExt;
 
 struct Directory(std::path::PathBuf);
