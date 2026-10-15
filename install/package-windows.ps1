@@ -17,19 +17,28 @@ Copy-Item -LiteralPath $CoreBinary -Destination (Join-Path $Destination 'cloudro
 Copy-Item -LiteralPath $DesktopBinary -Destination (Join-Path $Destination 'Cloudroom.Desktop.exe')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'LICENSE') -Destination (Join-Path $Destination 'LICENSE')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'install\windows.ps1') -Destination (Join-Path $Destination 'install\windows.ps1')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'install\create-shortcut.ps1') -Destination (Join-Path $Destination 'install\create-shortcut.ps1')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'Start-Cloudroom.cmd') -Destination (Join-Path $Destination 'Start-Cloudroom.cmd')
 $guide = @'
 # Cloudroom for Windows (alpha)
 
 This portable package includes the native Core runtime and desktop GUI.
-Requires Windows 10/11 x64 and a signed-in native codex.exe available on PATH.
+Requires Windows 10/11 x64 and a signed-in native codex.exe. The launcher finds
+Codex on PATH, in its desktop bundle, npm packages, or Microsoft Store installs.
 No .NET installation is required for the bundled desktop app.
 
 Double-click Start-Cloudroom.cmd. First use creates private runtime settings
-under %LOCALAPPDATA%\CloudroomCore, then starts Core and the GUI. If Codex is
-not on PATH or its model is not configured, use PowerShell:
+under %LOCALAPPDATA%\CloudroomCore, then starts Core and the GUI. If Codex
+cannot be found or its model is not configured, use PowerShell:
 
   .\install\windows.ps1 -Action Configure -CodexBinary C:\path\codex.exe -Model MODEL_ID
   .\install\windows.ps1 -Action Gui
+
+To add a desktop shortcut, run from this extracted folder:
+
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install\create-shortcut.ps1
+
+Keep the extracted folder in place; recreate the shortcut after moving it.
 
 Closing the GUI leaves agents running. Stop Core with:
 
@@ -43,7 +52,5 @@ while Core is stopped. Never share the generated core.json or account tokens.
 Source and full setup guide: https://github.com/Xaiando/cloudroom-core
 '@
 [System.IO.File]::WriteAllText((Join-Path $Destination 'README.md'), $guide)
-$start = '@echo off' + "`r`n" + 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0install\windows.ps1" -Action Gui' + "`r`n" + 'if errorlevel 1 pause' + "`r`n"
-[System.IO.File]::WriteAllText((Join-Path $Destination 'Start-Cloudroom.cmd'), $start)
 Compress-Archive -LiteralPath $Destination -DestinationPath ($Destination + '.zip')
 Write-Output ($Destination + '.zip')

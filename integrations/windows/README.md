@@ -10,7 +10,15 @@ With the runtime configured and the desktop executable published:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install\windows.ps1 -Action Gui
 ```
 
-Or double-click `install\Start-Cloudroom.cmd`. The execution-policy override applies only to this launch. The launcher finds native Codex on PATH, in its desktop bundle, in installed npm packages, or in Microsoft Store installations.
+Or double-click `Start-Cloudroom.cmd` in the repository or extracted package. The execution-policy override applies only to this launch. The launcher finds native Codex on PATH, in its desktop bundle, in installed npm packages, or in Microsoft Store installations.
+
+Create a desktop shortcut with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install\create-shortcut.ps1
+```
+
+The shortcut is named **Cloudroom** and starts both Core and the GUI. Keep the application folder in place; recreate the shortcut after moving it.
 
 The launcher starts Core if necessary and opens the desktop window. Closing the window leaves Core and its sessions running. Use `-Action Stop` to stop the backend.
 
