@@ -129,8 +129,8 @@ async fn pi_waits_through_retry_and_preserves_tool_snapshots() {
     let fixture = Fixture::new(Kind::Pi);
     let (handle, mut events) = runtime::Handle::spawn(&fixture.config, Kind::Pi, None).unwrap();
     handle.start_session().await.unwrap();
-    handle.send("retry", "retry").await.unwrap();
     let started = std::time::Instant::now();
+    handle.send("retry", "retry").await.unwrap();
     let mut starts = 0;
     let mut snapshots = Vec::new();
     let mut updates = Vec::new();

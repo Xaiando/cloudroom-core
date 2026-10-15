@@ -6,3 +6,6 @@ private/
 !.env.example
 __pycache__/
 /integrations/bb/dist/
+/integrations/windows/bin/
+/integrations/windows/obj/
+/integrations/windows/publish/

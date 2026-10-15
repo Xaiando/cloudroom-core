@@ -2,11 +2,13 @@
 
 ## Native Windows port (alpha)
 
-The `windows-native` branch adds a native `cloudroom.exe` backend and a PowerShell launcher. Codex sessions, the HTTP API, project folders, saved history, restart recovery, and Job Object process cleanup are available.
+The `windows-native` branch adds a native `cloudroom.exe` backend, a **Windows desktop GUI**, and a PowerShell launcher. Codex sessions, live conversation output, model selection, project folders, saved history, restart recovery, and Job Object process cleanup are available.
 
-This is a **single-user, localhost-only runtime**: agents share your Windows account. Terminals, other harnesses, command guards, sync, and Linux security isolation still need porting. This fork does not include a Windows GUI.
+This is a **single-user, localhost-only runtime**: agents share your Windows account. Terminals, other harnesses, command guards, sync, and Linux security isolation still need porting.
 
-See the [Windows setup guide](docs/windows.md) for installation, supported features, limitations, and tests. The upstream Linux documentation follows below.
+See the [Windows setup guide](docs/windows.md) and [desktop build guide](integrations/windows/README.md) for installation, supported features, limitations, and tests. Launch the GUI with `install\windows.ps1 -Action Gui`. The upstream Linux documentation follows below.
+
+![Cloudroom native Windows desktop](docs/windows-desktop.png)
 
 [Website](https://www.cloudroom.dev) · [Desktop app](https://github.com/davidondrej/cloudroom-gui) · [Changelog](https://www.cloudroom.dev/changelog) · [Security](https://www.cloudroom.dev/security)
 

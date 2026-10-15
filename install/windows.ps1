@@ -1,7 +1,7 @@
 # Native local runtime. Works in Windows PowerShell 5.1 and PowerShell 7.
 [CmdletBinding()]
 param(
-    [ValidateSet('Check', 'Configure', 'Run', 'Start', 'Status', 'Stop', 'Api')]
+    [ValidateSet('Check', 'Configure', 'Run', 'Start', 'Status', 'Stop', 'Api', 'Gui')]
     [string]$Action = 'Check',
     [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA 'CloudroomCore'),
     [string]$Repository,
@@ -19,7 +19,8 @@ Set-StrictMode -Version Latest
 if ($env:OS -ne 'Windows_NT') { throw 'This launcher requires native Windows.' }
 $sourceRoot = Split-Path -Parent $PSScriptRoot
 if (!$CoreBinary) {
-    $CoreBinary = Join-Path $sourceRoot 'target\release\cloudroom.exe'
+    $CoreBinary = Join-Path $sourceRoot 'cloudroom.exe'
+    if (!(Test-Path -LiteralPath $CoreBinary)) { $CoreBinary = Join-Path $sourceRoot 'target\release\cloudroom.exe' }
     if (!(Test-Path -LiteralPath $CoreBinary)) { $CoreBinary = Join-Path $sourceRoot 'target\debug\cloudroom.exe' }
 }
 $configPath = Join-Path $DataDirectory 'core.json'
@@ -43,6 +44,18 @@ function Get-OwnedProcess {
     $process = Get-Process -Id $saved.Id -ErrorAction SilentlyContinue
     if ($process -and $process.StartTime.ToUniversalTime().Ticks.ToString() -eq $saved.StartTicks -and $process.Path -eq $saved.Binary) { return $process }
     return $null
+}
+
+if ($Action -eq 'Gui') {
+    $desktopBinary = Join-Path $sourceRoot 'Cloudroom.Desktop.exe'
+    if (!(Test-Path -LiteralPath $desktopBinary)) { $desktopBinary = Join-Path $sourceRoot 'integrations\windows\publish\Cloudroom.Desktop.exe' }
+    if (!(Test-Path -LiteralPath $desktopBinary)) { throw 'Publish the desktop app first. See integrations/windows/README.md.' }
+    if (!(Test-Path -LiteralPath $configPath)) {
+        & $PSCommandPath -Action Configure -DataDirectory $DataDirectory -Repository $Repository -Model $Model -CodexBinary $CodexBinary -CodexHome $CodexHome -Port $Port
+    }
+    if (!(Get-OwnedProcess)) { & $PSCommandPath -Action Start -DataDirectory $DataDirectory -CoreBinary $CoreBinary }
+    Start-Process -FilePath $desktopBinary -ArgumentList @('--config', ('"' + $configPath + '"'))
+    return
 }
 
 if ($Action -eq 'Check') {
