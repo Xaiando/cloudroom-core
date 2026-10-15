@@ -74,6 +74,18 @@ function Get-OwnedProcess {
     return $null
 }
 
+function Get-StartupDetails($Config) {
+    $logPath = Join-Path $DataDirectory 'core.stderr.log'
+    $details = ''
+    if (Test-Path -LiteralPath $logPath) {
+        $details = (@(Get-Content -LiteralPath $logPath -Tail 12) -join [Environment]::NewLine).Trim()
+        $details = $details.Replace([string]$Config.CLOUDROOM_TOKEN, '[redacted]')
+        if ($details.Length -gt 3000) { $details = $details.Substring($details.Length - 3000) }
+    }
+    if (!$details) { $details = 'Core did not write an error message.' }
+    return ($details + [Environment]::NewLine + 'Log: ' + $logPath)
+}
+
 if ($Action -eq 'Gui') {
     $desktopBinary = Join-Path $sourceRoot 'Cloudroom.Desktop.exe'
     if (!(Test-Path -LiteralPath $desktopBinary)) { $desktopBinary = Join-Path $sourceRoot 'integrations\windows\publish\Cloudroom.Desktop.exe' }
@@ -198,11 +210,14 @@ try {
         $deadline = [DateTime]::UtcNow.AddSeconds(20)
         do {
             $child.Refresh()
-            if ($child.HasExited) { throw 'Core exited. Inspect core.stderr.log in the data directory.' }
+            if ($child.HasExited) {
+                $child.WaitForExit()
+                throw ('Core exited during startup.' + [Environment]::NewLine + (Get-StartupDetails $config))
+            }
             try { $ready = (Invoke-CoreApi $config 'GET' '/v1/ready' $null).ready } catch { $ready = $false }
             if (!$ready) { Start-Sleep -Milliseconds 200 }
         } while (!$ready -and [DateTime]::UtcNow -lt $deadline)
-        if (!$ready) { throw 'Core did not become ready within 20 seconds.' }
+        if (!$ready) { throw ('Core did not become ready within 20 seconds.' + [Environment]::NewLine + (Get-StartupDetails $config)) }
         $saved = @{ Id = $child.Id; StartTicks = $child.StartTime.ToUniversalTime().Ticks.ToString(); Binary = $CoreBinary }
         [System.IO.File]::WriteAllText($pidPath, ($saved | ConvertTo-Json))
         Write-Output ('Core ready at http://' + $config.CLOUDROOM_LISTEN + ' (PID ' + $child.Id + ').')
