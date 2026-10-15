@@ -172,7 +172,7 @@ impl Session {
             .values()
             .find(|r| r.command == "start")
             .and_then(|r| r.input["command_guard_enabled"].as_bool())
-            .unwrap_or(true)
+            .unwrap_or(!cfg!(windows))
     }
 
     fn strip_ai_co_authors(&self) -> bool {
@@ -180,7 +180,7 @@ impl Session {
             .values()
             .find(|r| r.command == "start")
             .and_then(|r| r.input["strip_ai_co_authors"].as_bool())
-            .unwrap_or(true)
+            .unwrap_or(!cfg!(windows))
     }
 
     fn system_prompt(&self) -> Option<String> {
@@ -665,6 +665,13 @@ impl Manager {
             Option<String>,
         ),
     ) -> Result<(String, Receipt)> {
+        if cfg!(windows)
+            && (command_guard_enabled == Some(true) || strip_ai_co_authors == Some(true))
+        {
+            return Err(Error::Conflict(
+                "The command guard and Git author hook are unavailable on Windows",
+            ));
+        }
         let id = format!("cr_{request}");
         let kind = harness
             .or_else(|| {

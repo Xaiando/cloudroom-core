@@ -1,14 +1,19 @@
 //! Open agent-controlled files under the agent identity, then retain the opened inode.
 use std::{
     fs::File,
-    io::{self, Read, Write},
+    io::{self, Read},
+    path::Path,
+};
+#[cfg(unix)]
+use std::{
+    io::Write,
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd},
         unix::net::UnixStream,
     },
-    path::Path,
     process::Stdio,
 };
+#[cfg(unix)]
 use tokio::process::Command;
 
 pub(super) type Identity = Option<(u32, u32)>;
@@ -122,6 +127,7 @@ pub(super) fn open_directory(root: &Path, path: &Path, identity: Identity) -> io
     open_entry(root, path, identity, true)
 }
 
+#[cfg(unix)]
 fn open_entry(root: &Path, path: &Path, identity: Identity, directory: bool) -> io::Result<File> {
     let path = if path.is_absolute() {
         path.to_path_buf()
@@ -182,16 +188,20 @@ fn open_entry(root: &Path, path: &Path, identity: Identity, directory: bool) -> 
 }
 
 #[cfg(target_os = "linux")]
+#[cfg(unix)]
 type Length = usize;
 #[cfg(not(target_os = "linux"))]
+#[cfg(unix)]
 type Length = u32;
 
 #[repr(C)]
+#[cfg(unix)]
 struct IoVec {
     base: *mut u8,
     len: usize,
 }
 #[repr(C)]
+#[cfg(unix)]
 struct Message {
     name: *mut u8,
     name_len: u32,
@@ -202,6 +212,7 @@ struct Message {
     flags: i32,
 }
 #[repr(C)]
+#[cfg(unix)]
 struct Rights {
     len: Length,
     level: i32,
@@ -209,6 +220,7 @@ struct Rights {
     fd: i32,
 }
 
+#[cfg(unix)]
 fn receive(socket: &mut UnixStream) -> io::Result<File> {
     unsafe extern "C" {
         fn recvmsg(fd: i32, message: *mut Message, flags: i32) -> isize;
@@ -272,4 +284,44 @@ fn receive(socket: &mut UnixStream) -> io::Result<File> {
         .as_i64()
         .map(|code| io::Error::from_raw_os_error(code as i32))
         .unwrap_or_else(|| io::Error::other("agent file path is invalid")))
+}
+
+#[cfg(windows)]
+fn open_entry(root: &Path, path: &Path, identity: Identity, directory: bool) -> io::Result<File> {
+    if identity.is_some() {
+        return Err(io::Error::other(
+            "Linux file identity unavailable on Windows",
+        ));
+    }
+    let root = root.canonicalize()?;
+    let path = if path.is_absolute() {
+        path.to_owned()
+    } else {
+        root.join(path)
+    };
+    // Native CLIs may return C:\... while canonicalize produces \\?\C:\... . Normalize
+    // the parent spelling while leaving the final entry for the capability opener.
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::other("file has no parent"))?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| io::Error::other("file has no name"))?;
+    let path = parent.canonicalize()?.join(name);
+    let relative = path.strip_prefix(&root).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "file is outside its allowed directory",
+        )
+    })?;
+    let root = cap_std::fs::Dir::open_ambient_dir(root, cap_std::ambient_authority())?;
+    if directory {
+        Ok(root.open_dir(relative)?.into_std_file())
+    } else {
+        let file = root.open(relative)?.into_std();
+        if !file.metadata()?.is_file() {
+            return Err(io::Error::other("unexpected file type"));
+        }
+        Ok(file)
+    }
 }

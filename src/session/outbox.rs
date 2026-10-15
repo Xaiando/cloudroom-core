@@ -1,7 +1,7 @@
+use crate::platform::{DirBuilderExt, OpenOptionsExt};
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Write},
-    os::unix::fs::{DirBuilderExt, OpenOptionsExt},
     path::{Path, PathBuf},
 };
 
@@ -33,14 +33,14 @@ impl Journal {
     pub fn open_from(directory: &Path, known: u64) -> io::Result<Self> {
         fs::DirBuilder::new()
             .recursive(true)
-            .mode(0o700)
+            .unix_mode(0o700)
             .create(directory)?;
         let lock = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
-            .mode(0o600)
+            .unix_mode(0o600)
             .open(directory.join("lock"))?;
         lock.try_lock()
             .map_err(|_| io::Error::other("state directory already in use"))?;
@@ -121,7 +121,7 @@ impl Journal {
             .write(true)
             .create(true)
             .truncate(true)
-            .mode(0o600)
+            .unix_mode(0o600)
             .open(&temporary)?;
         file.write_all(bytes)?;
         file.sync_all()?;
@@ -192,12 +192,12 @@ impl Journal {
             .write(true)
             .create(true)
             .truncate(true)
-            .mode(0o600)
+            .unix_mode(0o600)
             .open(&temporary)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         fs::rename(temporary, self.directory.join(name))?;
-        File::open(&self.directory)?.sync_all()?;
+        crate::platform::sync_directory(&self.directory)?;
         self.writable = true;
         Ok(())
     }

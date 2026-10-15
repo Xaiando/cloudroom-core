@@ -1,3 +1,4 @@
+use crate::platform::OpenOptionsExt;
 use crate::{config::Config, runtime, session::Manager, workspace::valid_id};
 use axum::{
     Json,
@@ -11,7 +12,6 @@ use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs, io,
-    os::unix::fs::OpenOptionsExt,
     path::PathBuf,
     process::Stdio,
     sync::{Arc, Mutex},
@@ -123,12 +123,12 @@ impl Sync {
             .write(true)
             .create(true)
             .truncate(true)
-            .mode(0o600)
+            .unix_mode(0o600)
             .open(&temporary)?;
         file.write_all(&serde_json::to_vec(settings)?)?;
         file.sync_all()?;
         fs::rename(temporary, &self.path)?;
-        fs::File::open(self.path.parent().unwrap())?.sync_all()
+        crate::platform::sync_directory(self.path.parent().unwrap())
     }
     fn check_device(&self, device: &str) -> Result<()> {
         if self.settings.lock().unwrap().device.as_deref() != Some(device) {

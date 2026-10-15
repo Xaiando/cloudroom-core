@@ -11,13 +11,14 @@ use tokio::sync::{Mutex, watch};
 
 const LIFETIME: Duration = Duration::from_secs(10 * 60);
 fn save_private(path: &Path, contents: &str) -> io::Result<()> {
-    use std::{io::Write, os::unix::fs::OpenOptionsExt};
+    use crate::platform::OpenOptionsExt;
+    use std::io::Write;
     let temporary = path.with_extension("tmp");
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .mode(0o600)
+        .unix_mode(0o600)
         .open(&temporary)?;
     file.write_all(contents.as_bytes())?;
     file.sync_all()?;

@@ -482,7 +482,28 @@ async fn authenticate(State(token): State<Arc<String>>, request: Request, next: 
         .flatten()
         .any(|supplied| same_token(supplied, token.as_str()));
     let mut response = if authorized {
-        next.run(request).await
+        #[cfg(windows)]
+        let unavailable = {
+            let path = request.uri().path();
+            [
+                "/v1/sync",
+                "/v1/teleports",
+                "/v1/accounts/pi",
+                "/v1/accounts/claude",
+                "/v1/accounts/cursor",
+            ]
+            .iter()
+            .any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")))
+                || path == "/v1/accounts/codex/import"
+                || path.ends_with("/attachments")
+        };
+        #[cfg(unix)]
+        let unavailable = false;
+        if unavailable {
+            (StatusCode::NOT_IMPLEMENTED, Json(json!({"code":"platform_unavailable","error":"This feature has not been ported to native Windows"}))).into_response()
+        } else {
+            next.run(request).await
+        }
     } else {
         (
             StatusCode::UNAUTHORIZED,

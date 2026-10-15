@@ -46,6 +46,20 @@ impl Config {
             .map_err(|_| io::Error::other("invalid CLOUDROOM_LISTEN"))?;
         let unprotected_test_mode =
             env::var("CLOUDROOM_UNPROTECTED_TEST_MODE").as_deref() == Ok("1");
+        let windows_local =
+            cfg!(windows) && env::var("CLOUDROOM_WINDOWS_LOCAL").as_deref() == Ok("1");
+        if cfg!(windows) && !windows_local && !unprotected_test_mode {
+            return Err(io::Error::other(
+                "Native Windows currently requires CLOUDROOM_WINDOWS_LOCAL=1 (single user, loopback only; agents share the service account)",
+            ));
+        }
+        if windows_local
+            && (!listen.ip().is_loopback() || env::var_os("CLOUDROOM_STORAGE_POLICY").is_some())
+        {
+            return Err(io::Error::other(
+                "Windows local mode requires loopback and cannot use a Linux storage policy",
+            ));
+        }
         if !listen.ip().is_loopback() {
             if unprotected_test_mode {
                 return Err(io::Error::other(
@@ -60,7 +74,7 @@ impl Config {
                 ));
             }
         }
-        let storage = if unprotected_test_mode {
+        let storage = if unprotected_test_mode || windows_local {
             None
         } else {
             Some(crate::workspace::storage::Policy::load(&PathBuf::from(
@@ -87,6 +101,11 @@ impl Config {
             _ => return Err(io::Error::other("unsupported CLOUDROOM_HARNESS")),
         };
         let account_home: PathBuf = required("CLOUDROOM_ACCOUNT_HOME")?.into();
+        if cfg!(windows) && default_harness != Kind::Codex {
+            return Err(io::Error::other(
+                "The native Windows runtime currently supports Codex only",
+            ));
+        }
         let mut harnesses = BTreeMap::new();
         for (kind, prefix) in [(Kind::Codex, "CODEX"), (Kind::Pi, "PI")] {
             let binary = format!("CLOUDROOM_{prefix}_BINARY");
@@ -170,6 +189,14 @@ impl Config {
                         provider: None,
                     },
                 );
+            }
+        }
+        if cfg!(windows) {
+            harnesses.retain(|kind, _| *kind == Kind::Codex);
+            if !harnesses.contains_key(&Kind::Codex) {
+                return Err(io::Error::other(
+                    "Set CLOUDROOM_CODEX_BINARY, CLOUDROOM_CODEX_HOME and CLOUDROOM_CODEX_MODEL",
+                ));
             }
         }
         Ok(Self {

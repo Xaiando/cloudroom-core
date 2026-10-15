@@ -1,9 +1,12 @@
 //! Disk policy and explicitly disposable npm download-cache cleanup, not history retention.
 use crate::{config::Config, observability::now_ms, runtime::linux};
 use serde::{Deserialize, Serialize};
+#[cfg(unix)]
+use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 use std::{
-    fs, io,
-    os::unix::fs::MetadataExt,
+    io,
     path::{Path, PathBuf},
     sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
@@ -39,6 +42,24 @@ fn resume() -> u64 {
 }
 
 impl Policy {
+    #[cfg(windows)]
+    pub fn load(_: &Path) -> io::Result<Self> {
+        Err(io::Error::other(
+            "Linux storage policies are unavailable on Windows; use CLOUDROOM_WINDOWS_LOCAL=1 for a single-user local runtime",
+        ))
+    }
+    #[cfg(windows)]
+    pub fn prepare(&self, _: &Config) -> io::Result<()> {
+        Err(io::Error::other(
+            "Linux storage isolation is unavailable on Windows",
+        ))
+    }
+    #[cfg(windows)]
+    fn check_filesystems(&self, config: &Config) -> io::Result<()> {
+        self.prepare(config)
+    }
+
+    #[cfg(unix)]
     pub fn load(path: &Path) -> io::Result<Self> {
         let policy: Self = serde_json::from_slice(&fs::read(path)?)?;
         if policy.agent_uid == 0
@@ -72,6 +93,7 @@ impl Policy {
         self.cgroup_root.is_none()
     }
 
+    #[cfg(unix)]
     fn check_filesystems(&self, config: &Config) -> io::Result<()> {
         let mount = fs::metadata(&config.repository)?;
         let var_tmp = (!self.container()).then_some(Path::new("/var/tmp"));
@@ -100,6 +122,7 @@ impl Policy {
         Ok(())
     }
 
+    #[cfg(unix)]
     pub fn prepare(&self, config: &Config) -> io::Result<()> {
         if !cfg!(target_os = "linux") {
             return Err(io::Error::other("disk protection requires Linux"));
@@ -203,7 +226,11 @@ impl Snapshot {
             reason: if enabled {
                 "measurement_unavailable"
             } else {
-                "unprotected_test_mode"
+                if cfg!(windows) {
+                    "windows_local_same_user"
+                } else {
+                    "unprotected_test_mode"
+                }
             },
         }
     }
@@ -299,6 +326,7 @@ impl Guard {
                 "storage unsafe; file writes are blocked",
             ));
         }
+        #[cfg(unix)]
         let workload = self
             .policy
             .as_ref()
@@ -308,7 +336,13 @@ impl Guard {
                 Ok::<_, io::Error>(group)
             })
             .transpose()?;
+        #[cfg(unix)]
         let child = command.spawn()?;
+        #[cfg(windows)]
+        let (child, workload) = {
+            let (child, group) = linux::spawn(command)?;
+            (child, Some(group))
+        };
         writers.retain(|writer| writer.strong_count() > 0);
         if let Some(group) = workload.as_ref().filter(|_| gated) {
             writers.push(Arc::downgrade(group));
@@ -424,7 +458,7 @@ pub(crate) fn disk(path: &Path) -> io::Result<Disk> {
         available_bytes: bytes(available)?,
     })
 }
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", windows)))]
 pub(crate) fn disk(_: &Path) -> io::Result<Disk> {
     Err(io::Error::other("disk measurement requires Linux"))
 }
@@ -587,6 +621,22 @@ fn a_name(file: &fs::File) -> io::Result<String> {
 #[cfg(not(target_os = "linux"))]
 pub fn clean_npm_cache(_: &Path, _: &Path) -> io::Result<usize> {
     Err(io::Error::other("cache cleanup requires Linux"))
+}
+
+#[cfg(windows)]
+pub(crate) fn disk(path: &Path) -> io::Result<Disk> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW;
+    let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let (mut available, mut total, mut free) = (0, 0, 0);
+    if unsafe { GetDiskFreeSpaceExW(path.as_ptr(), &mut available, &mut total, &mut free) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(Disk {
+        total_bytes: total,
+        used_bytes: total.saturating_sub(free),
+        available_bytes: available,
+    })
 }
 
 #[cfg(test)]

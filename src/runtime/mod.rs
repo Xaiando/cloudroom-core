@@ -21,16 +21,19 @@ mod command_guard;
 pub(crate) mod cursor;
 pub(crate) mod cursor_auth;
 pub(crate) mod cursor_models;
+#[cfg_attr(windows, path = "../windows/cursor_print.rs")]
 pub mod cursor_print;
 mod devin;
 mod files;
 mod fx;
 mod hermes;
+#[cfg_attr(windows, path = "../windows/linux.rs")]
 pub(crate) mod linux;
 mod opencode;
 mod pi;
 pub(crate) mod pi_auth;
 mod process;
+#[cfg_attr(windows, path = "../windows/terminal.rs")]
 pub mod terminal;
 
 pub(crate) const SHUTDOWN_GRACE: Duration = Duration::from_secs(4);
@@ -359,7 +362,7 @@ impl Handle {
         kind: Kind,
         resume: Option<Resume>,
     ) -> io::Result<(Self, mpsc::Receiver<Event>)> {
-        Self::spawn_guarded(config, kind, resume, true, true, None)
+        Self::spawn_guarded(config, kind, resume, !cfg!(windows), !cfg!(windows), None)
     }
 
     pub fn spawn_guarded(
@@ -428,6 +431,11 @@ impl Handle {
         system_prompt: Option<String>,
         fork: Option<&str>,
     ) -> io::Result<(Self, mpsc::Receiver<Event>)> {
+        if cfg!(windows) && (kind != Kind::Codex || command_guard_enabled || strip_ai_co_authors) {
+            return Err(io::Error::other(
+                "Windows currently supports Codex with command_guard_enabled=false and strip_ai_co_authors=false; the Unix command guard has not been ported",
+            ));
+        }
         let mut profile = config
             .harnesses
             .get(&kind)
@@ -976,13 +984,48 @@ pub fn checkpoint(
 
 pub(super) fn command(binary: &Path, config: &Config) -> Command {
     // System tools come first; tools the agent installed itself follow (ADR 0119).
+    #[cfg(unix)]
     let mut path = std::ffi::OsString::from("/usr/local/bin:/usr/bin:/bin");
+    #[cfg(unix)]
     for folder in [".local/bin", ".cargo/bin", "go/bin"] {
         path.push(":");
         path.push(config.account_home.join(folder));
     }
+    #[cfg(windows)]
+    let path = std::env::var_os("PATH").unwrap_or_default();
     let mut command = Command::new(binary);
     command.env_clear();
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command
+            .as_std_mut()
+            .creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        // Windows process startup, TLS, tool discovery and PowerShell require these.
+        // Never copy the service token or arbitrary parent credentials.
+        for name in [
+            "SystemRoot",
+            "WINDIR",
+            "SystemDrive",
+            "COMSPEC",
+            "PATHEXT",
+            "TEMP",
+            "TMP",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "ProgramFiles",
+            "ProgramFiles(x86)",
+            "ProgramData",
+            "USERPROFILE",
+            "HOMEDRIVE",
+            "HOMEPATH",
+        ] {
+            if let Some(value) = std::env::var_os(name) {
+                command.env(name, value);
+            }
+        }
+        command.env("USERPROFILE", &config.account_home);
+    }
     // The user's own variables from Cloud environment settings, one NAME=value per line. Read at every
     // start, so saved changes reach new agents at once. Core's own values below win over them.
     let saved = std::fs::read_to_string(config.state_dir.join("environment")).unwrap_or_default();
@@ -1011,6 +1054,7 @@ pub async fn reconcile(config: &Config) -> io::Result<()> {
 }
 
 /// Unprotected tests never signal a saved PID: ownership cannot be proved after restart.
+#[cfg(unix)]
 pub async fn wait_for_exit(pid: u32) -> io::Result<()> {
     tokio::time::timeout(SHUTDOWN_GRACE, async {
         loop {
@@ -1037,4 +1081,33 @@ pub async fn wait_for_exit(pid: u32) -> io::Result<()> {
     })
     .await
     .map_err(|_| io::Error::other("previous process has not exited; refusing replacement"))?
+}
+
+#[cfg(windows)]
+pub async fn wait_for_exit(pid: u32) -> io::Result<()> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::{
+        Foundation::{ERROR_INVALID_PARAMETER, WAIT_OBJECT_0},
+        System::Threading::{OpenProcess, PROCESS_SYNCHRONIZE, WaitForSingleObject},
+    };
+    let raw = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+    if raw.is_null() {
+        let error = io::Error::last_os_error();
+        return if error.raw_os_error() == Some(ERROR_INVALID_PARAMETER as i32) {
+            Ok(())
+        } else {
+            Err(error)
+        };
+    }
+    let process = unsafe { OwnedHandle::from_raw_handle(raw) };
+    tokio::time::timeout(SHUTDOWN_GRACE, async {
+        loop {
+            if unsafe { WaitForSingleObject(process.as_raw_handle(), 0) } == WAIT_OBJECT_0 {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .map_err(|_| io::Error::other("previous process has not exited; refusing replacement"))
 }

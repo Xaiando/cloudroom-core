@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use cloudroom::{config::Config, runtime};
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};

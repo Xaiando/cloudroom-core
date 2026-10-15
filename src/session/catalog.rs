@@ -188,6 +188,35 @@ impl Manager {
         for feature in crate::FEATURES {
             capabilities[*feature] = json!(true);
         }
+        #[cfg(windows)]
+        {
+            capabilities["platform"] = json!("windows");
+            capabilities["isolation"] = json!("same_user");
+            for feature in [
+                "computer_use",
+                "terminals",
+                "command_guard",
+                "strip_ai_co_authors",
+                "sync",
+                "mcp_sync",
+                "teleport",
+                "attachments",
+                "upload_parts",
+                "subagents",
+                "child_threads",
+                "codex_auth_import",
+                "cursor_auth",
+                "claude_auth",
+                "pi_auth_import",
+                "pi_setup",
+            ] {
+                capabilities[feature] = json!(false);
+            }
+            for harness in capabilities["harnesses"].as_array_mut().unwrap() {
+                harness["subagents"] = json!(false);
+                harness["attachments"] = json!({"images":false,"files":false});
+            }
+        }
         capabilities
     }
 

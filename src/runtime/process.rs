@@ -3,7 +3,6 @@ use crate::config::Config;
 use serde_json::Value;
 use std::{
     io,
-    os::unix::process::ExitStatusExt,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -99,6 +98,9 @@ impl Process {
         mut command: Command,
         mut adapter: Box<dyn Adapter>,
     ) -> io::Result<(Self, mpsc::Receiver<Event>)> {
+        #[cfg(windows)]
+        let _ = config;
+        #[cfg(unix)]
         let group = config
             .storage
             .as_ref()
@@ -109,7 +111,13 @@ impl Process {
                 Ok::<_, io::Error>(group)
             })
             .transpose()?;
+        #[cfg(unix)]
         let mut child = command.spawn()?;
+        #[cfg(windows)]
+        let (mut child, group) = {
+            let (child, group) = linux::spawn(&mut command)?;
+            (child, Some(group))
+        };
         let pid = child
             .id()
             .ok_or_else(|| io::Error::other("harness has no pid"))?;
@@ -224,7 +232,7 @@ impl Process {
             };
             let mut details = stderr.finish().await;
             details.code = status.and_then(|status| status.code());
-            details.signal = status.and_then(|status| status.signal());
+            details.signal = status.and_then(crate::platform::exit_signal);
             let mut reason = reason;
             loop {
                 match adapter.capture() {

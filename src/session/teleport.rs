@@ -237,7 +237,7 @@ impl Manager {
         file.write_all(&serde_json::to_vec(transfer).map_err(std::io::Error::other)?)?;
         file.sync_all()?;
         fs::rename(temporary, directory.join("manifest.json"))?;
-        File::open(directory)?.sync_all()?;
+        crate::platform::sync_directory(&directory)?;
         Ok(())
     }
 

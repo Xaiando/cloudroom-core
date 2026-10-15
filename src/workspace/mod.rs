@@ -5,7 +5,6 @@ use axum::body::Body;
 use serde::{Deserialize, Serialize};
 use std::{
     fs, io,
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     process::Stdio,
     sync::Mutex,
@@ -52,7 +51,7 @@ impl Workspaces {
             filesystem: config
                 .storage
                 .as_ref()
-                .map(|_| fs::metadata(&config.repository).map(|m| m.dev()))
+                .map(|_| fs::metadata(&config.repository).map(|m| crate::platform::device(&m)))
                 .transpose()?,
             allocation: Mutex::new(()),
         })
@@ -69,7 +68,10 @@ impl Workspaces {
         // New workspaces may not exist yet; their nearest existing ancestor owns the allocation.
         for ancestor in path.ancestors() {
             match fs::symlink_metadata(ancestor) {
-                Ok(info) if !info.file_type().is_symlink() && info.dev() == expected => {
+                Ok(info)
+                    if !info.file_type().is_symlink()
+                        && crate::platform::device(&info) == expected =>
+                {
                     return Ok(());
                 }
                 Ok(_) => {
@@ -104,7 +106,9 @@ impl Workspaces {
         if workspace.path.components().any(|p| {
             !matches!(
                 p,
-                std::path::Component::RootDir | std::path::Component::Normal(_)
+                std::path::Component::RootDir
+                    | std::path::Component::Normal(_)
+                    | std::path::Component::Prefix(_)
             )
         }) {
             return Err(io::Error::other("Invalid workspace path"));
@@ -202,12 +206,34 @@ impl Workspaces {
         };
         let temporary = self.registry.join(format!("{id}.tmp"));
         fs::write(&temporary, serde_json::to_vec(&workspace)?)?;
-        fs::File::open(&temporary)?.sync_all()?;
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&temporary)?
+            .sync_all()?;
         fs::rename(temporary, self.registry.join(format!("{id}.json")))?;
-        fs::File::open(&self.registry)?.sync_all()?;
+        crate::platform::sync_directory(&self.registry)?;
         Ok(workspace)
     }
 
+    #[cfg(windows)]
+    pub async fn ensure_directory(&self, workspace: &Workspace) -> io::Result<()> {
+        if workspace.id == "legacy" {
+            if !workspace.path.is_dir() {
+                return Err(io::Error::other("repository directory is missing"));
+            }
+            return Ok(());
+        }
+        self.validate(workspace)?;
+        let relative = workspace
+            .path
+            .strip_prefix(&self.root)
+            .map_err(io::Error::other)?;
+        let root = cap_std::fs::Dir::open_ambient_dir(&self.root, cap_std::ambient_authority())?;
+        root.create_dir_all(relative)?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
     pub async fn ensure_directory(&self, workspace: &Workspace) -> io::Result<()> {
         self.check_filesystem(&workspace.path)?;
         if workspace.id != "legacy" {
@@ -263,6 +289,15 @@ impl Workspaces {
                 .stdin(Stdio::null())
                 .stderr(Stdio::null())
                 .kill_on_drop(true);
+            #[cfg(windows)]
+            {
+                command.env("PATH", std::env::var_os("PATH").unwrap_or_default());
+                for name in ["SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP"] {
+                    if let Some(value) = std::env::var_os(name) {
+                        command.env(name, value);
+                    }
+                }
+            }
             if let Some(policy) = &self.policy {
                 crate::runtime::linux::as_agent(
                     &mut command,

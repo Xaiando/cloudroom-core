@@ -1,6 +1,11 @@
+#[cfg(unix)]
+use crate::platform::DirBuilderExt;
+use crate::platform::OpenOptionsExt;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 pub(crate) mod metrics;
 mod system;
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests;
 
 use crate::{
@@ -14,7 +19,6 @@ use std::{
     fs::{self, OpenOptions},
     hash::BuildHasher,
     io::{self, Write},
-    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
     path::Path,
     sync::{
         Arc,
@@ -31,6 +35,7 @@ const CPU_INTERVAL: Duration = Duration::from_secs(60);
 const SLOW_API_MS: u64 = 1000;
 const STDERR_CAPACITY: usize = 32;
 const STDERR_BATCH: usize = 8;
+#[cfg(unix)]
 const STDERR_FILE_BYTES: u64 = 1024 * 1024;
 
 /// Only diagnostic fields belong here: never prompts, native payloads, paths or credentials.
@@ -418,6 +423,7 @@ impl Observability {
     }
 }
 
+#[cfg(unix)]
 fn write_stderr(state: &Path, captures: Vec<LocalStderr>) -> io::Result<()> {
     unsafe extern "C" {
         fn geteuid() -> u32;
@@ -432,7 +438,7 @@ fn write_stderr(state: &Path, captures: Vec<LocalStderr>) -> io::Result<()> {
     };
     check_directory(state, 0o022)?;
     let directory = state.join("harness-diagnostics");
-    match fs::DirBuilder::new().mode(0o700).create(&directory) {
+    match fs::DirBuilder::new().unix_mode(0o700).create(&directory) {
         Ok(()) => {}
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e),
@@ -477,7 +483,13 @@ fn write_rotated(directory: &Path, name: &str, bytes: &[u8], limit: u64) -> io::
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .mode(0o600)
+        .unix_mode(0o600)
         .open(path)?;
     file.write_all(bytes)
+}
+
+#[cfg(windows)]
+fn write_stderr(_: &Path, _: Vec<LocalStderr>) -> io::Result<()> {
+    // A same-user runtime cannot protect raw harness stderr from its agents.
+    Ok(())
 }

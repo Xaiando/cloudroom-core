@@ -1,8 +1,14 @@
+// Agent-local Unix IPC handlers remain compiled for shared types until the Windows pipe port.
+#![cfg_attr(windows, allow(dead_code))]
 pub mod api;
+#[cfg_attr(windows, path = "windows/computer_use.rs")]
 pub mod computer_use;
 pub mod config;
+#[cfg_attr(windows, path = "windows/mac.rs")]
 pub mod mac;
 mod observability;
+pub(crate) mod platform;
+#[cfg_attr(windows, path = "windows/preview.rs")]
 pub mod preview;
 pub mod runtime;
 pub mod secrets;
@@ -16,6 +22,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMIT: &str = env!("CLOUDROOM_COMMIT");
 /// Features `/v1/capabilities` always reports. Release pins record this list, so CI can
 /// check that new VMs support everything the app uses.
+#[cfg(unix)]
 pub const FEATURES: &[&str] = &[
     "stop",
     "resume",
@@ -58,6 +65,32 @@ pub const FEATURES: &[&str] = &[
     "files_wait",
 ];
 
+#[cfg(windows)]
+pub const FEATURES: &[&str] = &[
+    "stop",
+    "resume",
+    "launch_settings",
+    "prompt_reasoning",
+    "system_prompt",
+    "structured_prompt",
+    "queue_edit",
+    "queue_cancel",
+    "queue_reorder",
+    "steer",
+    "rewind",
+    "fork",
+    "side_chat",
+    "compact",
+    "goal",
+    "usage",
+    "session_list",
+    "drain",
+    "workspaces",
+    "direct_workspaces",
+    "root_workspace",
+    "codex_auth",
+];
+
 pub async fn serve(mut config: config::Config) -> Result<(), Box<dyn std::error::Error>> {
     use std::{future::IntoFuture, time::Duration};
     config.account_home = config.account_home.canonicalize()?;
@@ -85,10 +118,19 @@ pub async fn serve(mut config: config::Config) -> Result<(), Box<dyn std::error:
     let mut changed = manager.subscribe();
     let server = axum::serve(listener, api::router(manager.clone(), config.token))
         .with_graceful_shutdown(async move {
+            #[cfg(unix)]
+            {
             let mut terminate =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                     .expect("signal handler");
             tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=terminate.recv()=>{} }
+            }
+            #[cfg(windows)]
+            {
+                let mut close = tokio::signal::windows::ctrl_close().expect("console close handler");
+                let mut shutdown_signal = tokio::signal::windows::ctrl_shutdown().expect("console shutdown handler");
+                tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=close.recv()=>{}, _=shutdown_signal.recv()=>{} }
+            }
             shutdown.shutdown().await;
         })
         .into_future();

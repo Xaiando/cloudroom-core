@@ -1,5 +1,13 @@
 # Cloudroom core
 
+## Native Windows port (alpha)
+
+The `windows-native` branch adds a native `cloudroom.exe` backend and a PowerShell launcher. Codex sessions, the HTTP API, project folders, saved history, restart recovery, and Job Object process cleanup are available.
+
+This is a **single-user, localhost-only runtime**: agents share your Windows account. Terminals, other harnesses, command guards, sync, and Linux security isolation still need porting. This fork does not include a Windows GUI.
+
+See the [Windows setup guide](docs/windows.md) for installation, supported features, limitations, and tests. The upstream Linux documentation follows below.
+
 [Website](https://www.cloudroom.dev) · [Desktop app](https://github.com/davidondrej/cloudroom-gui) · [Changelog](https://www.cloudroom.dev/changelog) · [Security](https://www.cloudroom.dev/security)
 
 Your agents get their own room in the cloud.
@@ -16,6 +24,7 @@ Don't want to host it yourself? Hosted Cloudroom is invite-only for now. [Join t
 
 ## Get started
 
+- [Native Windows local runtime](docs/windows.md): Codex backend for one trusted Windows user, with a PowerShell launcher (initial port; see platform limitations).
 - [Install on Ubuntu 24.04](docs/setup.md) with one script, on a VPS, a home server, or a spare laptop. A database on the same machine works.
 - [Reach it from your laptop](docs/setup.md#reach-it-from-your-other-devices) with Tailscale, and [upgrade](docs/setup.md#upgrade) in place.
 - [HTTP API](docs/api.md): every endpoint, event, and error code.

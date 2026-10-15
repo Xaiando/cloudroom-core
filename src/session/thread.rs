@@ -14,7 +14,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
     collections::HashMap,
-    io::{self, Read},
+    io::{self},
     sync::{Arc, LazyLock, Mutex},
     time::{Duration, Instant},
 };
@@ -216,7 +216,7 @@ fn session_failure(error: super::Error) -> Failure {
 
 fn random_key() -> io::Result<String> {
     let mut bytes = [0u8; 12];
-    std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    crate::platform::random(&mut bytes)?;
     Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 

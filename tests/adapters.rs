@@ -1,3 +1,4 @@
+#![cfg(unix)]
 use cloudroom::{
     config::{Config, HarnessConfig},
     runtime::{self, Event, Kind},

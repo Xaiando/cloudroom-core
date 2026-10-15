@@ -6,7 +6,6 @@ use serde_json::{Value, json};
 use std::{
     fs::{self, File},
     io::{self, BufRead, BufReader, Read, Seek, SeekFrom},
-    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -773,7 +772,7 @@ impl Capture {
             .as_ref()
             .map(|file| file.metadata())
             .transpose()?
-            .is_some_and(|saved| (saved.dev(), saved.ino()) == (info.dev(), info.ino()));
+            .is_some_and(|saved| crate::platform::same_file(&saved, &info));
         if !same_file {
             self.file = Some(super::files::open(
                 &self.profile.home.join("sessions"),
