@@ -2,6 +2,8 @@
 
 ## Native Windows port (alpha)
 
+The [original desktop Windows preview](docs/windows-parity.md) now builds from our separate GUI fork and retains the original Plugins and Automations interface. Use `Start-Cloudroom-Preview.cmd` after setup. The WPF client below remains available as a fallback while feature parity is verified.
+
 The `windows-native` branch adds a native `cloudroom.exe` backend, a **Windows desktop GUI**, and a PowerShell launcher. Codex sessions, live conversation output, model selection, project folders, saved history, restart recovery, and Job Object process cleanup are available.
 
 This is a **single-user, localhost-only runtime**: agents share your Windows account. Terminals, other harnesses, command guards, sync, and Linux security isolation still need porting.
