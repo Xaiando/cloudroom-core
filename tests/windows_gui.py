@@ -59,7 +59,7 @@ def main():
                     time.sleep(.05)
                 else:
                     raise AssertionError('Core did not start')
-                prompt_requests = []
+                prompt_requests = {}
 
                 class Proxy(BaseHTTPRequestHandler):
                     def log_message(self, *_args):
@@ -84,8 +84,9 @@ def main():
                         with response:
                             data, status = response.read(), response.code
                         if self.path.endswith('/prompts') and self.command == 'POST':
-                            prompt_requests.append(json.loads(body))
-                            if len(prompt_requests) == 1:
+                            sent = prompt_requests.setdefault(self.path, [])
+                            sent.append(json.loads(body))
+                            if len(prompt_requests) == 1 and len(sent) == 1:
                                 # Core accepted the prompt, but the GUI never receives its receipt.
                                 self.close_connection = True
                                 self.connection.shutdown(socket.SHUT_RDWR)
@@ -113,7 +114,11 @@ def main():
                 report = json.loads((output / 'result.json').read_text())
                 assert report['passed'] is True
                 assert report['retried_lost_acceptance'] is True
-                assert len(prompt_requests) == 2 and prompt_requests[0] == prompt_requests[1], 'Retry changed the request ID or payload'
+                first, *others = prompt_requests.values()
+                assert len(first) == 2 and first[0] == first[1], 'Retry changed the request ID or payload'
+                assert report['multi_model'] is True
+                assert len(others) == 2 and all(len(sent) == 1 for sent in others), 'Each model must receive the prompt exactly once'
+                assert others[0][0]['request_id'] != others[1][0]['request_id'] and others[0][0]['text'] == others[1][0]['text']
                 print('PASS: actual WPF window; ' + report['checks'])
                 print('Rendered UI:', artifacts)
             finally:

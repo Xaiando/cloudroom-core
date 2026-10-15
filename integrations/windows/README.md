@@ -26,6 +26,8 @@ The GUI reads `%LOCALAPPDATA%\CloudroomCore\core.json` by default. Connection se
 
 Create a session with the selected model and reasoning level, optionally in a new project folder. Send messages, watch live output, expand command output, browse saved sessions, pause/resume the queue, interrupt a running turn, close a session, or open its folder. Enter sends; Shift+Enter adds a line. Closing a session preserves history.
 
+To compare models, tick **Also run on** models in the new-session dialog. The app starts one session per model (each in its own `name-model` folder when you create a project folder; otherwise they share Core's workspace and can overwrite each other's files). Tabs above the conversation switch between them, and **Send to all models** delivers your message to every open session in the chat, each with its own request ID. Untick it to message only the selected tab. If one model fails to receive a message, retrying resends only to that model. The grouping lives in the app's memory: after a restart the sessions are still listed, but not as tabs.
+
 If a send loses its response, retry the unchanged draft to reuse its original request ID and payload. The app does not automatically resend uncertain work. Switching sessions retains drafts in memory. Session titles derive from the first prompt and are rebuilt from history when opened.
 
 Output is displayed as selectable plain text. Rich Markdown, file attachments, integrated terminals, and system-tray/boot integration are not included in this alpha. The backend's same-account, local-only security limits still apply.
@@ -49,6 +51,6 @@ cargo build --locked
 python tests/windows_gui.py
 ```
 
-The smoke test opens and exercises the actual WPF window against a disposable deterministic Codex fixture, never a real inference account. It validates connection restrictions, project creation, prompt delivery, live output, duplicate-free polling, queue pause/resume, session close, and transcript replay. A test proxy deliberately drops an accepted prompt response, then verifies that a retry preserves the original ID and payload even if the effort picker changes. It renders `welcome.png` and `conversation.png` under ignored `private/gui-qa` for visual inspection.
+The smoke test opens and exercises the actual WPF window against a disposable deterministic Codex fixture, never a real inference account. It validates connection restrictions, project creation, multi-model groups with separate folders and exactly-once delivery to each model, prompt delivery, live output, duplicate-free polling, queue pause/resume, session close, and transcript replay. A test proxy deliberately drops an accepted prompt response, then verifies that a retry preserves the original ID and payload even if the effort picker changes. It renders `welcome.png` and `conversation.png` under ignored `private/gui-qa` for visual inspection.
 
 After publishing the desktop app and building release Core, `install/package-windows.ps1` creates an ignored portable ZIP containing both executables, a double-click launcher, instructions and the upstream license. It refuses to overwrite an existing package. Windows CI exercises the GUI and uploads that ZIP as a build artifact.

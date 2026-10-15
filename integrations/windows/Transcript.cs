@@ -22,6 +22,12 @@ public sealed record SessionItem(string Id, string Title, string State, string M
     public string Subtitle => (string.IsNullOrEmpty(Folder) ? "Default workspace" : Folder) + "  ·  " + State.Replace('_', ' ');
 }
 
+/// <summary>One model's session inside a multi-model chat.</summary>
+public sealed record GroupTab(string Id, string Model, string State)
+{
+    public string Label => Model + (State is "running" or "starting_turn" ? "  ·  working" : State is "failed" or "process_lost" ? "  ·  failed" : State == "closed" ? "  ·  closed" : "");
+}
+
 public sealed class Transcript
 {
     public ObservableCollection<ChatMessage> Messages { get; } = [];
