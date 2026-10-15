@@ -26,6 +26,34 @@ if (!$CoreBinary) {
 $configPath = Join-Path $DataDirectory 'core.json'
 $pidPath = Join-Path $DataDirectory 'process.json'
 
+function Find-CodexBinary {
+    # Codex desktop adds its CLI to its own environment, which an ordinary PowerShell
+    # window does not inherit. Prefer a native executable and ignore npm .cmd shims.
+    $command = Get-Command codex.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) { return $command.Source }
+    foreach ($directory in @(
+        (Join-Path $env:LOCALAPPDATA 'OpenAI\Codex\bin'),
+        (Join-Path $env:APPDATA 'npm\node_modules\@openai')
+    )) {
+        if (Test-Path -LiteralPath $directory) {
+            $binary = Get-ChildItem -LiteralPath $directory -Filter codex.exe -Recurse -File -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+            if ($binary) { return $binary.FullName }
+        }
+    }
+    # Microsoft Store installations live outside the user's ordinary application folder.
+    if (Get-Command Get-AppxPackage -ErrorAction SilentlyContinue) {
+        foreach ($package in @(Get-AppxPackage -Name '*Codex*' -ErrorAction SilentlyContinue)) {
+            if ($package.InstallLocation) {
+                $binary = Get-ChildItem -LiteralPath $package.InstallLocation -Filter codex.exe -Recurse -File -ErrorAction SilentlyContinue |
+                    Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+                if ($binary) { return $binary.FullName }
+            }
+        }
+    }
+    return $null
+}
+
 function Invoke-CoreApi($Config, $Verb, $Path, $JsonBody) {
     if (!$Path.StartsWith('/v1/') -or $Path.Contains('://')) { throw 'ApiPath must start with /v1/.' }
     $request = @{
@@ -50,6 +78,7 @@ if ($Action -eq 'Gui') {
     $desktopBinary = Join-Path $sourceRoot 'Cloudroom.Desktop.exe'
     if (!(Test-Path -LiteralPath $desktopBinary)) { $desktopBinary = Join-Path $sourceRoot 'integrations\windows\publish\Cloudroom.Desktop.exe' }
     if (!(Test-Path -LiteralPath $desktopBinary)) { throw 'Publish the desktop app first. See integrations/windows/README.md.' }
+    Write-Output "Using Core settings: $configPath"
     if (!(Test-Path -LiteralPath $configPath)) {
         & $PSCommandPath -Action Configure -DataDirectory $DataDirectory -Repository $Repository -Model $Model -CodexBinary $CodexBinary -CodexHome $CodexHome -Port $Port
     }
@@ -59,17 +88,20 @@ if ($Action -eq 'Gui') {
 }
 
 if ($Action -eq 'Check') {
-    foreach ($tool in @('git', 'cargo', 'rustc', 'codex')) {
+    foreach ($tool in @('git', 'cargo', 'rustc')) {
         $command = Get-Command $tool -ErrorAction SilentlyContinue
         [pscustomobject]@{ Tool = $tool; Available = [bool]$command; Path = $(if ($command) { $command.Source } else { '' }) }
     }
+    $nativeCodex = Find-CodexBinary
+    [pscustomobject]@{ Tool = 'codex'; Available = [bool]$nativeCodex; Path = $nativeCodex }
     [pscustomobject]@{ Tool = 'cloudroom'; Available = (Test-Path -LiteralPath $CoreBinary); Path = $CoreBinary }
     return
 }
 
 if ($Action -eq 'Configure') {
     if (Test-Path -LiteralPath $configPath) { throw "Configuration already exists at $configPath. Edit it locally to change settings." }
-    if (!$CodexBinary) { $CodexBinary = (Get-Command codex -ErrorAction Stop).Source }
+    if (!$CodexBinary) { $CodexBinary = Find-CodexBinary }
+    if (!$CodexBinary) { throw 'Could not find native codex.exe. Install Codex, or pass -CodexBinary C:\path\codex.exe. The launcher checks PATH, the Codex desktop bundle, npm packages, and Microsoft Store installations.' }
     $CodexBinary = (Resolve-Path -LiteralPath $CodexBinary).Path
     if ([System.IO.Path]::GetExtension($CodexBinary) -ne '.exe') { throw 'Use a native codex.exe, not an npm .cmd shim.' }
     $CodexHome = (Resolve-Path -LiteralPath $CodexHome).Path
@@ -96,7 +128,13 @@ if ($Action -eq 'Configure') {
         $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')
         [void]$acl.AddAccessRule($rule)
     }
-    Set-Acl -LiteralPath $DataDirectory -AclObject $acl
+    # Apply directly through .NET; first-run setup must also work in clean shells
+    # where PowerShell's optional security module has not been loaded.
+    if ($PSVersionTable.PSEdition -eq 'Desktop') {
+        [System.IO.Directory]::SetAccessControl($DataDirectory, $acl)
+    } else {
+        [System.IO.FileSystemAclExtensions]::SetAccessControl([System.IO.DirectoryInfo]::new($DataDirectory), $acl)
+    }
     [void][System.IO.Directory]::CreateDirectory($Repository)
     [void][System.IO.Directory]::CreateDirectory((Join-Path $DataDirectory 'history'))
     $Repository = (Resolve-Path -LiteralPath $Repository).Path

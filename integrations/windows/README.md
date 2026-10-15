@@ -7,8 +7,10 @@ A native WPF client for the Windows Core runtime. It uses Core's authenticated H
 With the runtime configured and the desktop executable published:
 
 ```powershell
-.\install\windows.ps1 -Action Gui
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install\windows.ps1 -Action Gui
 ```
+
+Or double-click `install\Start-Cloudroom.cmd`. The execution-policy override applies only to this launch. The launcher finds native Codex on PATH, in its desktop bundle, in installed npm packages, or in Microsoft Store installations.
 
 The launcher starts Core if necessary and opens the desktop window. Closing the window leaves Core and its sessions running. Use `-Action Stop` to stop the backend.
 

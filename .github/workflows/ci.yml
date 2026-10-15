@@ -37,6 +37,8 @@ jobs:
           cargo build --locked
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python tests/windows_native.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tests/windows_launcher.py
           exit $LASTEXITCODE
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
