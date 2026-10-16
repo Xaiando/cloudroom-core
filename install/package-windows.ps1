@@ -67,7 +67,11 @@ Full original Cloudroom parity is still in progress; see the source feature chec
 Conversations and Council answers render native Markdown with tables, lists and
 basic code coloring. Workspace files browses and previews UTF-8 text inside the
 selected conversation's workspace. File links open native previews, including
-source-line references. Previews are read only; attachments and editing are pending.
+source-line references. Edit / Preview opens the native text editor; Compare,
+Save file and Reload disk provide revision checks and reviewed conflict handling.
+Recovery copies and unsaved drafts are retained privately. Interrupted in-place
+writes may require manually loading a recovery draft; restart never replays writes.
+Attachments, file creation/deletion and fuller editor integrations are pending.
 
 If a Codex app update removes the saved CLI path, the launcher rediscovers the
 installed executable while preserving other runtime settings.
