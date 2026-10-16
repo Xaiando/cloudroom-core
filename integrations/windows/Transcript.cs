@@ -8,6 +8,7 @@ namespace Cloudroom.Desktop;
 public sealed class ChatMessage : INotifyPropertyChanged
 {
     public string Role { get; init; } = "CODEX";
+    public string SourceSession { get; init; } = "";
     public bool IsTool => Role == "TOOL";
     public bool IsMessage => !IsTool;
     private string text = "", detail = "";

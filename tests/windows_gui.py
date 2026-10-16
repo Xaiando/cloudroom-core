@@ -18,13 +18,28 @@ from bee_fixture import ChatFixture
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class DesktopDirectory(tempfile.TemporaryDirectory):
+    def cleanup(self):
+        target = Path(self.name).resolve()
+        assert target.parent == Path(tempfile.gettempdir()).resolve() and target.name.startswith('cloudroom desktop test '), 'Unexpected disposable cleanup target'
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                return super().cleanup()
+            except PermissionError:
+                # Core exit can precede final release of its owned Windows child handles.
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(.05)
+
+
 def main():
     assert sys.platform == 'win32', 'Native WPF requires Windows'
     gui = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / 'integrations/windows/publish/Cloudroom.Desktop.exe'
     core = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else ROOT / 'target/debug/cloudroom.exe'
     artifacts = Path(sys.argv[3]).resolve() if len(sys.argv) > 3 else ROOT / 'private/gui-qa'
     artifacts.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix='cloudroom desktop test ') as folder:
+    with DesktopDirectory(prefix='cloudroom desktop test ') as folder:
         root = Path(folder)
         home = root / 'home'
         repository = root / 'repository'
@@ -100,6 +115,14 @@ def main():
                             response = error
                         with response:
                             data, status = response.read(), response.code
+                        if self.command == 'GET' and self.path.startswith('/v1/bee/sessions/') and '/events' not in self.path and status == 200:
+                            state = json.loads(data)
+                            workspace = state.get('session', {}).get('workspace', {}).get('path')
+                            if workspace:
+                                folder = Path(workspace)
+                                folder.mkdir(parents=True, exist_ok=True)
+                                (folder / 'preview.md').write_text('# Native preview\n\n**Markdown** with Unicode ø — 蜂.\n\n- [x] Keep our GUI\n- [ ] More parity\n\n| Feature | State |\n| --- | --- |\n| File previews | Native |\n\n```python\ndef hello():\n    print("Cloud Bee")\n```\n\n[Source](source.py#L2)\n', encoding='utf-8')
+                                (folder / 'source.py').write_text('def hello():\n    print("Cloud Bee")\n', encoding='utf-8')
                         request_trace.append((self.command, self.path, status))
                         if self.path == '/v1/bee/library' and self.command == 'POST' and not dropped_library_write:
                             dropped_library_write.append(json.loads(body))
@@ -158,6 +181,8 @@ def main():
                 assert library['passed'] is True
                 organization = json.loads((output / 'organization-result.json').read_text())
                 assert organization['passed'] is True
+                presentation = json.loads((output / 'presentation-result.json').read_text())
+                assert presentation['passed'] is True
                 assert dropped_library_read, 'The library did not exercise transport recovery for read requests'
                 assert dropped_library_write, 'The library did not exercise deliberate recovery of an unconfirmed save'
                 assert report['retried_lost_acceptance'] is True
@@ -166,7 +191,7 @@ def main():
                 assert report['multi_model'] is True
                 assert len(others) == 2 and all(len(sent) == 1 for sent in others), 'Each model must receive the prompt exactly once'
                 assert others[0][0]['request_id'] != others[1][0]['request_id'] and others[0][0]['text'] == others[1][0]['text']
-                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'] + '; ' + library['checks'] + '; ' + organization['checks'])
+                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'] + '; ' + library['checks'] + '; ' + organization['checks'] + '; ' + presentation['checks'])
                 print('Rendered UI:', artifacts)
             finally:
                 if server.poll() is None:

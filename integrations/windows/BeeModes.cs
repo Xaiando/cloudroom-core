@@ -186,7 +186,7 @@ public partial class MainWindow
                 foreach (var record in records) if (record != null) history.Apply(record);
                 if (records.Count < 256) break;
             }
-            messages.Add(new ChatMessage { Role = model.ToUpperInvariant(), Detail = mode.ToUpperInvariant() + " · " + Json.Text(state, "state"), Text = history.Messages.LastOrDefault(m => m.Role != "YOU" && !m.IsTool)?.Text ?? "No answer yet. Select this model's tab to set its mode or inspect its full history." });
+            messages.Add(new ChatMessage { SourceSession = member, Role = model.ToUpperInvariant(), Detail = mode.ToUpperInvariant() + " · " + Json.Text(state, "state"), Text = history.Messages.LastOrDefault(m => m.Role != "YOU" && !m.IsTool)?.Text ?? "No answer yet. Select this model's tab to set its mode or inspect its full history." });
         }
         CouncilAnswers.ItemsSource = messages;
     }

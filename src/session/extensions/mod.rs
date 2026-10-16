@@ -1,4 +1,6 @@
 //! Native plugin ports and desktop organization, served by the existing Core API.
+#[cfg(windows)]
+mod files;
 mod library;
 mod plugins;
 mod runner;
@@ -241,6 +243,7 @@ pub(crate) fn routes() -> Router<Arc<Manager>> {
         return Router::new();
     }
     Router::new()
+        .merge(file_routes())
         .route("/v1/bee/threads", get(threads::list))
         .route("/v1/bee/threads/{id}/organize", post(threads::write))
         .route("/v1/bee/library", get(library::list).post(library::create))
@@ -251,6 +254,14 @@ pub(crate) fn routes() -> Router<Arc<Manager>> {
         .route("/v1/bee/automations/{id}/{action}", post(action))
         .route("/v1/bee/plugins", get(plugins::list))
         .route("/v1/bee/plugins/{id}/{action}", post(plugins::action))
+}
+#[cfg(windows)]
+fn file_routes() -> Router<Arc<Manager>> {
+    files::routes()
+}
+#[cfg(not(windows))]
+fn file_routes() -> Router<Arc<Manager>> {
+    Router::new()
 }
 async fn list(State(manager): State<Arc<Manager>>) -> Json<Value> {
     let workspaces = manager.workspaces.list().unwrap_or_default();

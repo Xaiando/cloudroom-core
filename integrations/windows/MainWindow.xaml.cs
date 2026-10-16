@@ -40,6 +40,7 @@ public partial class MainWindow : Window
     public MainWindow(string configPath, string? smokeDirectory)
     {
         InitializeComponent();
+        AddHandler(MarkdownView.LinkActivatedEvent, new RoutedEventHandler(MarkdownLinkActivated));
         ConfigPathBox.Text = configPath;
         this.smokeDirectory = smokeDirectory;
         ConversationList.ItemsSource = transcript.Messages;
@@ -598,7 +599,7 @@ public partial class MainWindow : Window
         catch (Exception error) { ShowError(SafeError(error)); }
     }
     private void UpdateWelcome() { Welcome.Visibility = transcript.Messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed; ConversationList.Visibility = transcript.Messages.Count > 0 ? Visibility.Visible : Visibility.Collapsed; }
-    private void ShowError(string text) { ErrorText.Text = text; ErrorBanner.Visibility = Visibility.Visible; ExtensionsError.Text = text; if (AutomationEditor.Visibility == Visibility.Visible) AutomationEditorError.Text = text; }
+    private void ShowError(string text) { ErrorText.Text = text; ErrorBanner.Visibility = Visibility.Visible; ExtensionsError.Text = text; if (AutomationEditor.Visibility == Visibility.Visible) AutomationEditorError.Text = text; if (FilePreviewDialog.Visibility == Visibility.Visible) FilePreviewError.Text = text; }
     private void ClearError() { ErrorBanner.Visibility = Visibility.Collapsed; ErrorText.Text = ""; ExtensionsError.Text = ""; AutomationEditorError.Text = ""; }
     private static string SafeError(Exception error) => error is TaskCanceledException ? "Core did not respond in time. Your draft is kept; retry it unchanged to reuse the request ID." : error is HttpRequestException ? "Cannot reach Core. Start the local runtime and check Connection settings. Your draft is kept." : error.Message;
     private static ScrollViewer? FindScroll(DependencyObject parent)
@@ -691,6 +692,7 @@ public partial class MainWindow : Window
         await ExtensionsSmokeTest(output);
         await LibrarySmokeTest(output);
         await OrganizationSmokeTest(output);
+        await PresentationSmokeTest(output);
         await File.WriteAllTextAsync(Path.Combine(output, "result.json"), new JsonObject { ["passed"] = true, ["retried_lost_acceptance"] = retried, ["multi_model"] = true, ["session"] = id, ["messages"] = replay.Messages.Count, ["checks"] = "connection validation, project creation, prompt, live output, duplicate-free polling, pause/resume/close, history replay, lost-response retry, multi-model group with separate folders; Cloud Bee Chat/Work, Council, reconnect" }.ToJsonString());
     }
     private async Task WaitForState(Func<JsonNode?, bool> predicate)

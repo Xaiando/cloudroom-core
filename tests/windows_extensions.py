@@ -13,6 +13,7 @@ from urllib.request import Request, urlopen
 from bee_fixture import ChatFixture
 from windows_native import until, ProcessHandle
 from library_fixture import exercise_library
+from files_fixture import exercise_files
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -126,6 +127,7 @@ def main():
                 assert 'PLUGIN_SECOND' not in provider.calls[-1]['messages'][-1]['content']
                 until(lambda: api('GET', path)['session']['receipts']['third']['state'] == 'completed', 'third Chat finished')
                 library_ids = exercise_library(api, plugin, provider, conv)
+                exercise_files(api, conv, repo)
 
                 spec = definition("import os; from pathlib import Path; print('automation hello — ø'); print('token_present', 'CLOUDROOM_TOKEN' in os.environ); Path('count.txt').write_text('once')")
                 create('denied', spec, expected=409, authorize=False)
@@ -220,7 +222,7 @@ def main():
                 assert not any(a['id'] == aid for a in api('GET', '/v1/bee/automations')['automations'])
                 assert len(detail(aid)['runs']) == 2, 'Delete removed run history'
                 assert token not in (root / 'core.log').read_text(errors='replace')
-                print('PASS: native plugin lifecycle/settings/power requests; instruction and scoped memory snapshots; Docs/Memory/Tasks revisions and retention; thread organization without interruption; scripts/agent automation; schedules/history; timeout/output bounds; descendant cancellation; restart without replay; authorization and revision conflicts')
+                print('PASS: native plugin lifecycle/settings/power requests; instruction and scoped memory snapshots; Docs/Memory/Tasks revisions and retention; bounded workspace files and junction/traversal rejection; thread organization without interruption; scripts/agent automation; schedules/history; timeout/output bounds; descendant cancellation; restart without replay; authorization and revision conflicts')
             finally:
                 if core is not None and core.poll() is None:
                     core.kill(); core.wait(timeout=10)

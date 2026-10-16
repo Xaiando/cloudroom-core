@@ -16,6 +16,7 @@ if ((Test-Path -LiteralPath $Destination) -or (Test-Path -LiteralPath ($Destinat
 Copy-Item -LiteralPath $CoreBinary -Destination (Join-Path $Destination 'cloudroom.exe')
 Copy-Item -LiteralPath $DesktopBinary -Destination (Join-Path $Destination 'Cloudroom.Desktop.exe')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'LICENSE') -Destination (Join-Path $Destination 'LICENSE')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'integrations\windows\THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $Destination 'THIRD-PARTY-NOTICES.txt')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'install\windows.ps1') -Destination (Join-Path $Destination 'install\windows.ps1')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'install\create-shortcut.ps1') -Destination (Join-Path $Destination 'install\create-shortcut.ps1')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'Start-Cloudroom.cmd') -Destination (Join-Path $Destination 'Start-Cloudroom.cmd')
@@ -62,6 +63,11 @@ editing, revisions, search and archive/restore. Memories enter new messages only
 when selected for context. Tasks track status and prepare drafts for review.
 Organize selected saves conversation names, pins, collections and archive state.
 Full original Cloudroom parity is still in progress; see the source feature checklist.
+
+Conversations and Council answers render native Markdown with tables, lists and
+basic code coloring. Workspace files browses and previews UTF-8 text inside the
+selected conversation's workspace. File links open native previews, including
+source-line references. Previews are read only; attachments and editing are pending.
 
 If a Codex app update removes the saved CLI path, the launcher rediscovers the
 installed executable while preserving other runtime settings.

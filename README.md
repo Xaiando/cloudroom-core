@@ -18,6 +18,9 @@ collections, search and archive/restore. Full parity remains in progress; the
 [function checklist](docs/cloudroom-feature-parity.md) tracks all 35 bundled
 original plugins and the remaining desktop workflows.
 
+[Native Markdown and workspace files](docs/native-files.md) add selectable rich
+conversations, basic code coloring, file links and bounded read-only text previews.
+
 See the [Windows setup guide](docs/windows.md) and [desktop build guide](integrations/windows/README.md) for installation, supported features, limitations, and tests. Double-click `Start-Cloud-Bee.cmd` to launch, or run `install\create-shortcut.ps1` to add a desktop shortcut. The upstream Linux documentation follows below.
 
 ![Cloudroom native Windows desktop](docs/windows-desktop.png)

@@ -11,5 +11,7 @@
     <Product>Cloud Bee</Product>
     <Description>Cloud Bee native Windows desktop, powered by Cloudroom Core</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
+  <ItemGroup><PackageReference Include="Markdig" Version="[1.4.1]" /><Content Include="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>
