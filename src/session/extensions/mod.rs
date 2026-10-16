@@ -3,6 +3,7 @@
 pub(in crate::session) mod files;
 mod library;
 mod plugins;
+mod projects;
 mod runner;
 mod schedule;
 mod threads;
@@ -79,6 +80,10 @@ pub(super) struct Run {
 struct Data {
     #[serde(default)]
     threads: BTreeMap<String, threads::Organization>,
+    #[serde(default)]
+    projects: BTreeMap<String, projects::Project>,
+    #[serde(default)]
+    project_threads: BTreeMap<String, String>,
     #[serde(default)]
     library: BTreeMap<String, library::Entry>,
     automations: BTreeMap<String, Automation>,
@@ -262,6 +267,9 @@ pub(crate) fn routes() -> Router<Arc<Manager>> {
         .merge(file_routes())
         .route("/v1/bee/threads", get(threads::list))
         .route("/v1/bee/threads/{id}/organize", post(threads::write))
+        .route("/v1/bee/projects", get(projects::list))
+        .route("/v1/bee/projects/{id}", post(projects::write))
+        .route("/v1/bee/projects/threads/{id}", post(projects::assign))
         .route("/v1/bee/library", get(library::list).post(library::create))
         .route("/v1/bee/library/{id}", get(library::detail))
         .route("/v1/bee/library/{id}/{action}", post(library::action))

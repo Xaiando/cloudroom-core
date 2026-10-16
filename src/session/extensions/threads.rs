@@ -27,7 +27,10 @@ pub(super) async fn write(
     Json(input): Json<Write>,
 ) -> Result<Json<Value>> {
     key(&input.request_id)?;
-    if !manager.bee.contains(&id) && manager.session(&id).await.is_err() {
+    let exists = manager.bee.contains(&id);
+    #[cfg(windows)]
+    let exists = exists || manager.bee.council_contains(&id);
+    if !exists && manager.session(&id).await.is_err() {
         return Err(Error::NotFound);
     }
     if input.title.chars().count() > 160

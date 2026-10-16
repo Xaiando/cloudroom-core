@@ -241,6 +241,7 @@ def main():
                 assert council_report['passed'] is True
                 hive_report = json.loads((output / 'hive-result.json').read_text())
                 assert hive_report['passed'] and hive_starts[0] == hive_starts[1] and hive_approvals[0] == hive_approvals[1]
+                assert json.loads((output / 'projects-result.json').read_text())['passed']
                 assert council_messages[0] == council_messages[1], 'Council retry changed the original message'
                 assert len(file_saves) >= 5 and file_saves[0] == file_saves[1], 'File retry changed the immutable payload'
                 assert dropped_library_read, 'The library did not exercise transport recovery for read requests'

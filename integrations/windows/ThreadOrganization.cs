@@ -19,11 +19,12 @@ public partial class MainWindow
         if (SessionList == null || ThreadSearch == null || ThreadArchived == null) return;
         string search = ThreadSearch.Text.Trim();
         var items = allSessionItems.Where(i => Json.Flag(threadOrganization[i.Id], "archived") == (ThreadArchived.IsChecked == true))
+            .Where(i => projectFilter.Length == 0 || (projectFilter == "unassigned" ? ThreadProject(i.Id).Length == 0 : ThreadProject(i.Id) == projectFilter))
             .Where(i => search.Length == 0 || (i.Title + "\n" + i.Model + "\n" + i.Folder + "\n" + Json.Text(threadOrganization[i.Id], "collection")).Contains(search, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(i => Json.Flag(threadOrganization[i.Id], "pinned")).ThenBy(i => Json.Text(threadOrganization[i.Id], "collection"), StringComparer.OrdinalIgnoreCase).ToList();
         refreshingList = true;
         SessionList.ItemsSource = items;
-        SessionList.SelectedItem = items.FirstOrDefault(i => i.Id == sessionId);
+        SessionList.SelectedItem = items.FirstOrDefault(i => i.Id == ActiveThreadId);
         SessionCount.Text = items.Count + " / " + allSessionItems.Count;
         refreshingList = false;
     }
@@ -31,7 +32,7 @@ public partial class MainWindow
     private void ThreadFilterChanged(object sender, RoutedEventArgs e) => ApplyThreadFilter();
     private async void ShowThreadOrganization(object sender, RoutedEventArgs e) => await Act(() =>
     {
-        OpenThreadOrganization(sessionId ?? throw new IOException("Select a conversation first."));
+        OpenThreadOrganization(ActiveThreadId.Length > 0 ? ActiveThreadId : throw new IOException("Select a conversation first."));
         return Task.CompletedTask;
     });
     private void OpenThreadOrganization(string id)
@@ -45,6 +46,7 @@ public partial class MainWindow
         organizationRequest = pending == null ? Json.Id() : Json.Text(pending, "request_id");
         ThreadTitle.Text = Json.Text(metadata, "title", titles.GetValueOrDefault(id, ""));
         ThreadCollection.Text = Json.Text(metadata, "collection");
+        PopulateThreadProject(id);
         ThreadPinned.IsChecked = Json.Flag(metadata, "pinned"); ThreadArchiveValue.IsChecked = Json.Flag(metadata, "archived");
         ThreadOrganizationError.Text = pending == null ? "" : "An unconfirmed save is restored. Save retries that request.";
         ThreadOrganizationDialog.Visibility = Visibility.Visible;
@@ -66,6 +68,7 @@ public partial class MainWindow
         try
         {
             await ExtensionPost(path, body);
+            await MoveOrganizedThread(organizingThread);
             if (ThreadTitle.Text.Trim().Length == 0) titles.Remove(organizingThread);
             await RefreshSessions();
             ThreadOrganizationDialog.Visibility = Visibility.Collapsed;

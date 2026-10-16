@@ -176,6 +176,8 @@ public partial class MainWindow : Window
         var legacy = await source.Get("/v1/sessions", lifetime.Token);
         var managed = await source.Get("/v1/bee/sessions", lifetime.Token);
         var organizationState = (await source.Get("/v1/bee/threads", lifetime.Token))["threads"] as JsonObject ?? new JsonObject();
+        var projectState = await source.Get("/v1/bee/projects", lifetime.Token);
+        var councils = await source.Get("/v1/bee/councils", lifetime.Token);
         var linked = Json.Array(managed, "sessions").Select(s => Json.Text(s, "execution_session_id")).ToHashSet();
         var combined = new JsonArray();
         foreach (var item in Json.Array(managed, "sessions").Concat(Json.Array(legacy, "sessions").Where(s => !linked.Contains(Json.Text(s, "session_id"))))) combined.Add(item?.DeepClone());
@@ -203,9 +205,15 @@ public partial class MainWindow : Window
             if (savedTitle.Length > 0) titles[id] = savedTitle;
             return new SessionItem(id, (Json.Flag(organization, "pinned") ? "★ " : "") + titles.GetValueOrDefault(id, AgentName(harness) + " · " + id.Replace("cr_", "")[..Math.Min(10, id.Replace("cr_", "").Length)]), Json.Text(item, "state"), Json.Text(item, "model"), Path.GetFileName(path.TrimEnd('\\', '/')));
         }).ToList();
-        allSessionItems = items;
+        foreach (var council in Json.Array(councils, "councils"))
+        {
+            string id = Json.Text(council, "id"), title = Json.Text(threadOrganization[id], "title", Json.Text(council, "title"));
+            items.Add(new SessionItem(id, (Json.Flag(threadOrganization[id], "pinned") ? "★ " : "") + "⬡ " + title,
+                Json.Text(council, "state"), "Council", Path.GetFileName(Json.Text(council, "workspace").TrimEnd('\\', '/'))));
+        }
+        allSessionItems = items; ApplyProjects(projectState);
         ApplyThreadFilter();
-        if (sessionId == null && SessionList.Items.Count > 0) SessionList.SelectedIndex = 0;
+        if (sessionId == null && CouncilWorkspacePanel.Visibility != Visibility.Visible && SessionList.Items.Count > 0) SessionList.SelectedIndex = 0;
         foreach (var members in groupIds.Where(p => p.Value.Length > 0).GroupBy(p => p.Value))
         {
             var ids = members.Select(p => p.Key).OrderBy(id => id).ToList();
@@ -306,6 +314,7 @@ public partial class MainWindow : Window
 
     private void SelectSession(string id)
     {
+        SaveCouncilDraft(); CouncilWorkspacePanel.Visibility = Visibility.Collapsed;
         ExtensionsPane.Visibility = Visibility.Collapsed;
         ConversationPane.Visibility = Visibility.Visible;
         if (sessionId != null) drafts[sessionId] = Composer.Text;
@@ -345,12 +354,16 @@ public partial class MainWindow : Window
             var models = new List<string> { primary };
             models.AddRange(ExtraModels());
             bool newFolder = NewWorkspaceCheck.IsChecked == true;
+            string project = NewChatProjectId;
             string name = ProjectBox.Text.Trim();
             var starts = new List<JsonObject>();
             string groupId = Json.Id();
             foreach (string model in models)
             {
                 var start = new JsonObject { ["request_id"] = Json.Id(), ["harness"] = HarnessPicker.SelectedItem as string ?? "codex", ["model"] = model };
+                start["desktop_project"] = project;
+                start["desktop_title"] = NewThreadTitle.Text.Trim();
+                if (project.Length > 0 && Json.Text(projects[project], "workspace_id") is { Length: > 0 } projectWorkspace) start["workspace"] = projectWorkspace;
                 if (EffortFor(model) is string effort && effort.Length > 0) start["reasoning"] = effort;
                 if (newFolder)
                 {
@@ -363,7 +376,7 @@ public partial class MainWindow : Window
                     start["workspace"] = "gui_" + Json.Id();
                     start["workspace_name"] = projectName;
                 }
-                if (smokeDirectory == null && LegacyWorkCheck.IsChecked != true) start["group"] = groupId;
+                if ((smokeDirectory == null || project.Length > 0) && LegacyWorkCheck.IsChecked != true) start["group"] = groupId;
                 starts.Add(start);
             }
             pendingStarts = starts;
@@ -373,7 +386,8 @@ public partial class MainWindow : Window
         var ids = new List<string>();
         foreach (var start in pendingStarts)
         {
-            string id = Json.Text(await client.Post(start.ContainsKey("group") ? "/v1/bee/sessions" : "/v1/sessions", start, lifetime.Token), "session_id");
+            string id = Json.Text(await client.Post(start.ContainsKey("group") ? "/v1/bee/sessions" : "/v1/sessions", StartPayload(start), lifetime.Token), "session_id");
+            await AttachCreatedThread(id, start);
             ids.Add(id);
             sessionModels[id] = Json.Text(start, "model");
         }
@@ -494,7 +508,8 @@ public partial class MainWindow : Window
         NewButton.IsEnabled = ready;
         CreateButton.IsEnabled = ready;
         int modelCount = 1 + ExtraModels().Count();
-        CreateButton.Content = acting ? "Starting…" : pendingStarts != null ? "Retry session" : modelCount > 1 ? "Create " + modelCount + " sessions" : "Create session";
+        CreateButton.Content = acting ? "Starting…" : pendingStarts != null || pendingCouncilStart != null ? "Retry chat" : NewThreadKind.SelectedIndex == 0 ? "Create Council chat" : modelCount > 1 ? "Create " + modelCount + " chats" : "Create chat";
+        ProjectList.IsEnabled = !acting; NewChatProject.IsEnabled = pendingStarts == null && pendingCouncilStart == null;
         SendButton.IsEnabled = ready && !closed && ModelPicker.SelectedItem != null;
         SessionList.IsEnabled = !acting;
         Composer.IsReadOnly = acting;
@@ -510,6 +525,7 @@ public partial class MainWindow : Window
         UpdateModes();
         UpdateCouncilControls();
         CouncilNavButton.IsEnabled = ready;
+        if (NewDialog.Visibility == Visibility.Visible && NewThreadKind.SelectedIndex == 0) LegacyWorkCheck.Visibility = Visibility.Collapsed;
     }
 
     private static string AgentName(string id) => id switch
@@ -563,7 +579,8 @@ public partial class MainWindow : Window
     }
     private async void SessionSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (refreshingList || SessionList.SelectedItem is not SessionItem item || item.Id == sessionId) return;
+        if (refreshingList || SessionList.SelectedItem is not SessionItem item || item.Id == ActiveThreadId) return;
+        if (IsCouncil(item.Id)) { await Act(() => SelectCouncilThread(item.Id)); return; }
         SelectSession(item.Id);
         await Poll();
     }
@@ -579,11 +596,11 @@ public partial class MainWindow : Window
         await Poll();
     }
     private async void SendMessage(object sender, RoutedEventArgs e) => await Act(SendDraft);
-    private async void CreateSessionClicked(object sender, RoutedEventArgs e) => await Act(async () => { await CreateSession(); await Poll(); });
+    private async void CreateSessionClicked(object sender, RoutedEventArgs e) => await Act(async () => { if (NewThreadKind.SelectedIndex == 0 && pendingStarts == null) await CreateCouncilChat(); else { await CreateSession(); await Poll(); } });
     private async void PauseQueue(object sender, RoutedEventArgs e) => await Act(() => SessionCommand((string)PauseButton.Content == "Resume queue" ? "resume" : "stop"));
     private async void Interrupt(object sender, RoutedEventArgs e) => await Act(() => SessionCommand("interrupt", new JsonObject { ["target_request_id"] = Json.Text(current, "current_request") }));
     private async void CloseSession(object sender, RoutedEventArgs e) => await Act(() => SessionCommand("close"));
-    private void ShowNewSession(object sender, RoutedEventArgs e) { NewSessionError.Text = ""; NewDialog.Visibility = Visibility.Visible; NewWorkspaceCheck.IsChecked = false; LegacyWorkCheck.IsChecked = false; }
+    private void ShowNewSession(object sender, RoutedEventArgs e) => PrepareNewChat();
     private void ShowConnection(object sender, RoutedEventArgs e) { ConnectionDialog.Visibility = Visibility.Visible; ConnectionError.Text = ""; }
     private void DismissDialog(object sender, RoutedEventArgs e) { ConnectionDialog.Visibility = Visibility.Collapsed; NewDialog.Visibility = Visibility.Collapsed; }
     private async void LoadSettings(object sender, RoutedEventArgs e)
@@ -704,6 +721,7 @@ public partial class MainWindow : Window
         await PresentationSmokeTest(output);
         await CouncilWorkspaceSmokeTest(output);
         await HiveSmokeTest(output);
+        await ProjectsSmokeTest(output);
         await File.WriteAllTextAsync(Path.Combine(output, "result.json"), new JsonObject { ["passed"] = true, ["retried_lost_acceptance"] = retried, ["multi_model"] = true, ["session"] = id, ["messages"] = replay.Messages.Count, ["checks"] = "connection validation, project creation, prompt, live output, duplicate-free polling, pause/resume/close, history replay, lost-response retry, multi-model group with separate folders; Cloud Bee Chat/Work, Council, reconnect" }.ToJsonString());
     }
     private async Task WaitForState(Func<JsonNode?, bool> predicate)

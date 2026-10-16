@@ -12,6 +12,8 @@ This is a **single-user, localhost-only runtime**: agents share your Windows acc
 
 See [Council and Hive Traffic Control](docs/hive-traffic-control.md) for model selectors, microtasks, isolated Git worktrees, resource leases, reviewed single-file integration and recovery. See [Council provider setup](docs/council-cli.md) to use GPT, Grok and Claude CLI sign-ins, local Qwen, or DeepSeek through OpenCode. Native Codex is the first supported coding worker; Chat participants cannot modify files.
 
+Use [Projects and chat threads](docs/projects.md) to customize project names, colours and local workspace folders, create multiple Chat or Council threads per project, and move or archive chats without changing their workspace permissions.
+
 Cloud Bee also includes [native Automations, Custom instructions, and Keep Awake](docs/native-extensions.md), with durable run history and plugin controls.
 
 Native [Docs, Memory, Tasks and conversation organization](docs/native-library.md)

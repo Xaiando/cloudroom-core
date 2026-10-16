@@ -26,6 +26,7 @@ public partial class MainWindow
     private async void ShowLibrary(object sender, RoutedEventArgs e) => await Act(OpenLibrary);
     private async Task OpenLibrary()
     {
+        SaveCouncilDraft(); CouncilWorkspacePanel.Visibility = Visibility.Collapsed;
         if (client == null || !connected) throw new IOException("Connect to Core first.");
         ExtensionsPane.Visibility = LibraryView.Visibility = Visibility.Visible;
         ConversationPane.Visibility = AutomationsView.Visibility = PluginsView.Visibility = Visibility.Collapsed;

@@ -28,8 +28,10 @@ public partial class MainWindow
         foreach (var pair in pendingPrompts) prompts[pair.Key] = pair.Value.DeepClone();
         var savedDrafts = new JsonObject();
         foreach (var pair in drafts) savedDrafts[pair.Key] = pair.Value;
+        var projectPending = new JsonObject();
+        foreach (var pair in extensionOutbox.Where(p => p.Key.StartsWith("/v1/bee/projects", StringComparison.Ordinal) || p.Key.StartsWith("/v1/bee/threads", StringComparison.Ordinal))) projectPending[pair.Key] = pair.Value.DeepClone();
         var saved = new JsonObject { ["starts"] = starts, ["prompts"] = prompts, ["drafts"] = savedDrafts,
-            ["draft_id"] = draftId, ["draft_text"] = draftText, ["selected"] = sessionId };
+            ["draft_id"] = draftId, ["draft_text"] = draftText, ["selected"] = sessionId, ["project_filter"] = projectFilter, ["project_pending"] = projectPending };
         string path = OutboxPath();
         File.WriteAllText(path + ".pending", saved.ToJsonString());
         File.Move(path + ".pending", path, true);
@@ -38,6 +40,8 @@ public partial class MainWindow
     {
         if (client == null || !File.Exists(OutboxPath())) return;
         var saved = JsonNode.Parse(File.ReadAllText(OutboxPath()));
+        if (saved?["project_pending"] is JsonObject projectPending)
+            foreach (var pair in projectPending) if (pair.Value is JsonObject body) extensionOutbox[pair.Key] = (JsonObject)body.DeepClone();
         pendingStarts = Json.Array(saved, "starts").OfType<JsonObject>().Select(s => (JsonObject)s.DeepClone()).ToList();
         if (pendingStarts.Count == 0) pendingStarts = null;
         pendingPrompts.Clear();
@@ -48,6 +52,8 @@ public partial class MainWindow
         draftId = Json.Text(saved, "draft_id") is string id && id.Length > 0 ? id : null;
         draftText = Json.Text(saved, "draft_text");
         string selected = Json.Text(saved, "selected");
+        projectFilter = Json.Text(saved, "project_filter");
+        ApplyProjects(new JsonObject { ["projects"] = projects.DeepClone(), ["threads"] = projectThreads.DeepClone() }); ApplyThreadFilter();
         if (draftId != null && pendingPrompts.Count == 0) { draftId = null; draftText = null; drafts.Remove(selected); }
         if (SessionList.Items.OfType<SessionItem>().Any(item => item.Id == selected)) { sessionId = null; SelectSession(selected); }
     }

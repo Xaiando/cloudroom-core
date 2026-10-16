@@ -103,6 +103,14 @@ impl Workspaces {
     fn validate(&self, workspace: &Workspace) -> io::Result<()> {
         self.check_filesystem(&workspace.path)?;
         valid_id(&workspace.id)?;
+        #[cfg(windows)]
+        if workspace.id.starts_with("local_") && workspace.parent.is_none() {
+            let canonical = Self::local_folder(&workspace.path)?;
+            if canonical != workspace.path {
+                return Err(io::Error::other("Local workspace moved"));
+            }
+            return Ok(());
+        }
         if workspace.path.components().any(|p| {
             !matches!(
                 p,
@@ -216,8 +224,65 @@ impl Workspaces {
     }
 
     #[cfg(windows)]
+    fn local_folder(path: &Path) -> io::Result<PathBuf> {
+        use std::os::windows::fs::MetadataExt;
+        if !path.is_absolute()
+            || path.to_string_lossy().starts_with("\\\\")
+                && !path.to_string_lossy().starts_with("\\\\?\\")
+        {
+            return Err(io::Error::other("Local folder required"));
+        }
+        let info = fs::symlink_metadata(path)?;
+        if !info.is_dir() || info.file_attributes() & 0x400 != 0 {
+            return Err(io::Error::other("Ordinary folder required"));
+        }
+        let path = path.canonicalize()?;
+        if path
+            .to_string_lossy()
+            .to_uppercase()
+            .starts_with("\\\\?\\UNC\\")
+        {
+            return Err(io::Error::other("Network folders are unsupported"));
+        }
+        Ok(path)
+    }
+
+    #[cfg(windows)]
+    pub(crate) fn register_local(&self, id: &str, path: &Path) -> io::Result<Workspace> {
+        valid_id(id)?;
+        if !id.starts_with("local_") || self.policy.is_some() {
+            return Err(io::Error::other("Native local workspace required"));
+        }
+        let path = Self::local_folder(path)?;
+        let _guard = self.allocation.lock().unwrap();
+        if let Some(existing) = self.get(id)? {
+            if existing.path != path {
+                return Err(io::Error::other("Workspace identity already used"));
+            }
+            return Ok(existing);
+        }
+        let workspace = Workspace {
+            id: id.into(),
+            path,
+            parent: None,
+        };
+        let temporary = self.registry.join(format!("{id}.tmp"));
+        fs::write(&temporary, serde_json::to_vec(&workspace)?)?;
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&temporary)?
+            .sync_all()?;
+        fs::rename(temporary, self.registry.join(format!("{id}.json")))?;
+        crate::platform::sync_directory(&self.registry)?;
+        Ok(workspace)
+    }
+
+    #[cfg(windows)]
     pub async fn ensure_directory(&self, workspace: &Workspace) -> io::Result<()> {
-        if workspace.id == "legacy" {
+        if workspace.id == "legacy" || workspace.id.starts_with("local_") {
+            if workspace.id != "legacy" {
+                self.validate(workspace)?;
+            }
             if !workspace.path.is_dir() {
                 return Err(io::Error::other("repository directory is missing"));
             }

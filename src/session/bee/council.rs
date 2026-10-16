@@ -192,6 +192,9 @@ impl super::Store {
             .workspace
             .ok_or(invalid("Council has no selected workspace"))
     }
+    pub(crate) fn council_contains(&self, id: &str) -> bool {
+        self.councils.all.lock().unwrap().contains_key(id)
+    }
 }
 pub(super) fn routes() -> Router<Arc<Manager>> {
     Router::new()

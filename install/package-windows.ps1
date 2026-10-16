@@ -42,6 +42,13 @@ To add a desktop shortcut, run from this extracted folder:
 
 Keep the extracted folder in place; recreate the shortcut after moving it.
 
+Projects: click + Project in the sidebar to choose a name, colour and existing
+local workspace folder. Select a project and click its + to create multiple
+independent Chat/Work or Council threads. Organize selected can rename, pin,
+archive or move a chat. The project's ... opens settings. Archived projects can
+be shown and restored. Folder changes affect new threads; existing chats keep
+their original workspace and permissions. Choosing a folder grants no agent access.
+
 Closing the GUI leaves agents running. Stop Core with:
 
   .\install\windows.ps1 -Action Stop

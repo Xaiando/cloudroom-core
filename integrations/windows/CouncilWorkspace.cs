@@ -60,12 +60,17 @@ public partial class MainWindow
     private async void NewCouncilClicked(object sender, RoutedEventArgs e) => await Act(() =>
     {
         if (pendingCouncilStart != null || pendingCouncilMessage != null) throw new IOException("Retry the unconfirmed Council request before starting another conversation.");
+        ResetCouncilDraft(); return Task.CompletedTask;
+    });
+    private void ResetCouncilDraft()
+    {
         if (councilId != null) councilDrafts[councilId] = CouncilComposer.Text;
         councilId = null; councilBusy = false; councilRendered = ""; CouncilComposer.Text = "";
         CouncilConversation.ItemsSource = null; CouncilTasks.ItemsSource = null; CouncilOverall.Text = "New Council · choose models, folder and shared access";
         CouncilProgress.IsIndeterminate = false; CouncilProgress.Value = 0; CouncilHistory.SelectedIndex = -1;
-        UpdateCouncilControls(); SaveCouncilDraft(); return Task.CompletedTask;
-    });
+        CouncilFolder.Text = Json.Text(projects[projectFilter], "folder"); CouncilAccess.SelectedIndex = 0;
+        UpdateCouncilControls(); SaveCouncilDraft();
+    }
     private async void CouncilHistorySelected(object sender, SelectionChangedEventArgs e)
     {
         if (councilLoading || CouncilHistory.SelectedItem is not CouncilSaved selected || selected.Id == councilId) return;
@@ -108,11 +113,11 @@ public partial class MainWindow
         if (client == null) return;
         string text = CouncilComposer.Text.Trim(); if (text.Length == 0) return;
         if (System.Text.Encoding.UTF8.GetByteCount(text) > 16000) throw new IOException("Keep a Council message within 16,000 UTF-8 bytes.");
-        if (councilId == null)
+        if (councilId == null || pendingCouncilStart != null)
         {
-            pendingCouncilStart ??= new JsonObject { ["request_id"] = Json.Id(), ["title"] = CouncilTitle(text), ["members"] = SelectedCouncilMembers(), ["workspace"] = CouncilFolder.Text.Length == 0 ? null : CouncilFolder.Text, ["access"] = ComboTag(CouncilAccess), ["authorize_access"] = ComboTag(CouncilAccess) != "discuss" };
+            pendingCouncilStart ??= new JsonObject { ["request_id"] = Json.Id(), ["title"] = CouncilTitle(text), ["members"] = SelectedCouncilMembers(), ["workspace"] = CouncilFolder.Text.Length == 0 ? null : CouncilFolder.Text, ["access"] = ComboTag(CouncilAccess), ["authorize_access"] = ComboTag(CouncilAccess) != "discuss", ["desktop_project"] = projects.ContainsKey(projectFilter) ? projectFilter : "" };
             SaveCouncilDraft();
-            try { councilId = Json.Text(await client.Post("/v1/bee/councils", (JsonObject)pendingCouncilStart.DeepClone(), lifetime.Token), "council_id"); }
+            try { await ConfirmCouncilStart(); }
             catch (CoreApiException error) when (error.StatusCode is >= 400 and < 500) { pendingCouncilStart = null; SaveCouncilDraft(); throw; }
             pendingCouncilStart = null; SaveCouncilDraft();
         }
@@ -121,7 +126,7 @@ public partial class MainWindow
         SaveCouncilDraft(); UpdateCouncilControls();
         try { await client.Post("/v1/bee/councils/" + councilId + "/messages", (JsonObject)pendingCouncilMessage.DeepClone(), lifetime.Token); }
         catch (CoreApiException error) when (error.StatusCode is >= 400 and < 500) { pendingCouncilMessage = null; SaveCouncilDraft(); throw; }
-        pendingCouncilMessage = null; councilSelectionDirty = false; CouncilComposer.Clear(); councilDrafts.Remove(councilId); SaveCouncilDraft();
+        pendingCouncilMessage = null; councilSelectionDirty = false; CouncilComposer.Clear(); if (councilId != null) councilDrafts.Remove(councilId); SaveCouncilDraft();
         await RefreshCouncilWorkspace(true);
     }
     private async void CouncilCancelClicked(object sender, RoutedEventArgs e) => await Act(async () =>

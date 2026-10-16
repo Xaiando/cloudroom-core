@@ -42,6 +42,8 @@ public partial class MainWindow
             if (!pending.ContainsKey("request_id")) pending["request_id"] = Json.Id();
             extensionOutbox[path] = pending;
         }
+        bool projectWrite = path.StartsWith("/v1/bee/projects", StringComparison.Ordinal) || path.StartsWith("/v1/bee/threads", StringComparison.Ordinal);
+        if (projectWrite) SaveOutbox();
         try
         {
             var result = await client.Post(path, pending, lifetime.Token);
@@ -50,10 +52,12 @@ public partial class MainWindow
             return result;
         }
         catch (CoreApiException) { extensionOutbox.Remove(path); throw; }
+        finally { if (projectWrite) SaveOutbox(); }
     }
     private async Task OpenExtensions(bool plugins)
     {
         if (client == null || !connected) throw new IOException("Connect to Core first.");
+        SaveCouncilDraft(); CouncilWorkspacePanel.Visibility = Visibility.Collapsed;
         ExtensionsPane.Visibility = Visibility.Visible;
         ConversationPane.Visibility = Visibility.Collapsed;
         AutomationsView.Visibility = plugins ? Visibility.Collapsed : Visibility.Visible;
