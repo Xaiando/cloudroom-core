@@ -26,9 +26,9 @@ class CouncilFixture:
                     assert body['max_tokens'] == 8192 and not body.get('tools')
                 else:
                     assert body['tool_choice'] == 'none' and not body.get('tools')
-                    if body['model'] == 'deepseek-v4.1-flash-free':
-                        assert self.headers['Authorization'] == 'Bearer fixture-opencode-key'
-                        assert body['thinking'] == {'type': 'disabled'} and body['max_tokens'] == 8192
+                    if body['model'] == 'gemini-2.5-pro':
+                        assert self.headers['Authorization'] == 'Bearer fixture-gemini-key'
+                        assert body['max_tokens'] == 8192 and 'thinking' not in body
                 assert not body['stream']
                 assert all(m['role'] in ('user', 'assistant') for m in body['messages'])
                 with owner.lock:
@@ -45,8 +45,8 @@ class CouncilFixture:
                         if count == 4:
                             jobs.extend([dict(title='Independent file review', owner=2, depends_on=[], instructions='TASK_INSPECT'),
                                          dict(title='Combine the reviews', owner=3, depends_on=[1, 2], instructions='TASK_REVIEW')])
-                        if '"harness":"deepseek"' in first:
-                            jobs.append(dict(title='DeepSeek independent review', owner=4, depends_on=[], instructions='TASK_INSPECT'))
+                        if '"harness":"gemini"' in first:
+                            jobs.append(dict(title='Gemini independent review', owner=4, depends_on=[], instructions='TASK_INSPECT'))
                         output = json.dumps({'tasks': jobs})
                 elif first.startswith('COUNCIL_TASK_V1'):
                     if owner.hold_tasks.is_set():
@@ -103,8 +103,8 @@ class CouncilFixture:
 
 def configure_council(api, provider):
     members = []
-    for harness, model in [('codex', 'gpt-fixture'), ('grok', 'grok-fixture'), ('claude', 'claude-fixture'), ('qwen', 'qwen-fixture'), ('deepseek', 'deepseek-v4.1-flash-free')]:
-        api('POST', '/v1/bee/profiles', dict(harness=harness, model=model, provider='anthropic' if harness == 'claude' else 'opencode' if harness == 'deepseek' else 'local', endpoint=provider.anthropic if harness == 'claude' else provider.endpoint, api_key='fixture-claude-key' if harness == 'claude' else 'fixture-opencode-key' if harness == 'deepseek' else ''))
+    for harness, model in [('codex', 'gpt-fixture'), ('grok', 'grok-fixture'), ('claude', 'claude-fixture'), ('qwen', 'qwen-fixture'), ('gemini', 'gemini-2.5-pro')]:
+        api('POST', '/v1/bee/profiles', dict(harness=harness, model=model, provider='anthropic' if harness == 'claude' else 'gemini' if harness == 'gemini' else 'local', endpoint=provider.anthropic if harness == 'claude' else provider.endpoint, api_key='fixture-claude-key' if harness == 'claude' else 'fixture-gemini-key' if harness == 'gemini' else ''))
         members.append(dict(harness=harness, model=model))
     return members
 
@@ -133,8 +133,8 @@ def exercise_council(api, repo, provider, until):
     create('denied', 'read', expected=409, authorize_access=False)
     create('missing_model', expected=409, members=[dict(harness='claude', model='never-configured')])
     create('duplicate', expected=409, members=[members[0], members[0]])
-    api('POST', '/v1/bee/profiles', dict(harness='deepseek', model='deepseek-flash', provider='deepseek', endpoint=provider.endpoint, api_key='fixture-deepseek-key'))
-    create('too_many', expected=409, members=members + [dict(harness='deepseek', model='deepseek-flash')])
+    api('POST', '/v1/bee/profiles', dict(harness='gemini', model='gemini-2.5-flash', provider='gemini', endpoint=provider.endpoint, api_key='fixture-gemini-key'))
+    create('too_many', expected=409, members=members + [dict(harness='gemini', model='gemini-2.5-flash')])
     first = create('discussion')['council_id']
     assert create('discussion')['council_id'] == first
     create('discussion', 'read', expected=409)
@@ -204,8 +204,8 @@ def exercise_council(api, repo, provider, until):
     chat = api('POST', '/v1/bee/sessions', dict(request_id='claude_chat_fixture', harness='claude', model='claude-fixture'))['session_id']
     api('POST', '/v1/bee/sessions/' + chat + '/prompts', dict(request_id='claude_text', text='Claude text only'))
     until(lambda: api('GET', '/v1/bee/sessions/' + chat)['session']['receipts']['claude_text']['state'] == 'completed', 'Claude text transport')
-    free_lead = create('deepseek_coordinator', members=[members[4], *members[:4]])['council_id']
-    submit(free_lead, 'free_lead_plan', 'Coordinate this discussion with DeepSeek')
-    round = finished(free_lead)
+    gemini_lead = create('gemini_coordinator', members=[members[4], *members[:4]])['council_id']
+    submit(gemini_lead, 'gemini_lead_plan', 'Coordinate this discussion with Gemini')
+    round = finished(gemini_lead)
     assert round['state'] == 'completed' and len(round['tasks']) == 5 and 'shared result' in round['summary']
     return first, create('restart_shared', 'read')['council_id']

@@ -141,7 +141,11 @@ Core discovers `grok.exe` at `CLOUDROOM_ACCOUNT_HOME/.grok/bin/grok.exe` (or `CL
 
 ## Qwen
 
-Core discovers Qwen Code at `AppData/Roaming/npm/qwen.cmd` (resolved to its Node entry), `.local/bin/qwen`, or `CLOUDROOM_QWEN_BINARY`, with home `~/.qwen`. Use `harness: "qwen"`. The default model is `qwen3-coder-plus`. Core runs `qwen --acp --yolo`. Sign in with the Qwen CLI, or set `DASHSCOPE_API_KEY` or `OPENAI_API_KEY` for that account. On native Windows, Qwen is offered alongside Codex and Grok.
+Core discovers Qwen Code at `AppData/Roaming/npm/qwen.cmd` (resolved to its Node entry), `.local/bin/qwen`, or `CLOUDROOM_QWEN_BINARY`, with home `~/.qwen`. Use `harness: "qwen"`. The default model is `qwen3-coder-plus`. Core runs `qwen --acp --yolo`. Sign in with the Qwen CLI, or set `DASHSCOPE_API_KEY` or `OPENAI_API_KEY` for that account. On native Windows, Qwen is offered alongside Codex, Grok, and Gemini.
+
+## Gemini
+
+Core discovers Gemini CLI (`@google/gemini-cli`) at `AppData/Roaming/npm/gemini.cmd` (resolved to its Node entry), `.local/bin/gemini`, `/usr/local/bin/gemini`, or `CLOUDROOM_GEMINI_BINARY`, with home `~/.gemini`. Use `harness: "gemini"`. The default model is `gemini-2.5-pro`. Core runs `gemini --experimental-acp --yolo`. Sign in with the Gemini CLI, or set `GEMINI_API_KEY` or `GOOGLE_API_KEY` for that account. On native Windows, Gemini is offered alongside Codex, Grok, and Qwen.
 
 ## Queue, completion and recovery
 

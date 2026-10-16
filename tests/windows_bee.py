@@ -11,7 +11,7 @@ import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from bee_fixture import ChatFixture
-from deepseek_fixture import exercise_deepseek
+from deepseek_fixture import exercise_gemini
 from windows_native import until
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,13 +71,16 @@ def main():
                 core = start()
                 caps = api('GET', '/v1/bee/capabilities')['harnesses']
                 assert caps[0]['modes'] == 'WORK_ONLY' and caps[0]['chat_models'] == []
+                assert any(h['id'] == 'gemini' and any(m['model'] == 'gemini-2.5-pro' for m in h['models']) for h in caps)
                 for model in ('fixture', 'basic'):
                     api('POST', '/v1/bee/profiles', dict(harness='codex', model=model, provider='local', endpoint=chat.endpoint, api_key='PRIVATE-BEE-KEY'))
                 api('POST', '/v1/bee/profiles', dict(harness='local', model='local-fixture', provider='local', endpoint=chat.endpoint, api_key=''))
+                api('POST', '/v1/bee/profiles', dict(harness='gemini', model='gemini-2.5-pro', provider='gemini', endpoint='https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', api_key='PRIVATE-BEE-KEY'))
                 api('POST', '/v1/bee/profiles', dict(harness='local', model='bad', provider='local', endpoint='http://10.0.0.1/v1/chat/completions', api_key=''), expected=409)
                 caps = api('GET', '/v1/bee/capabilities')['harnesses']
                 assert next(h for h in caps if h['id'] == 'codex')['modes'] == 'CHAT_AND_WORK'
                 assert next(h for h in caps if h['id'] == 'local')['modes'] == 'CHAT_ONLY'
+                assert next(h for h in caps if h['id'] == 'gemini')['modes'] == 'CHAT_ONLY'
                 assert 'PRIVATE-BEE-KEY' not in json.dumps(caps)
 
                 def create(key, model='fixture', harness='codex'):
@@ -98,7 +101,7 @@ def main():
                     return state(sid)['receipts'].get(request, {}).get('state') in ('completed', 'failed', 'unknown_after_restart')
 
                 assert api('GET', '/v1/sessions')['total'] == 0, 'Chat room creation spawned an agent'
-                exercise_deepseek(api, chat, until)
+                exercise_gemini(api, chat, until)
                 chat.calls.clear()
                 prompt(lead, 'think', 'Discuss a project')
                 until(lambda: settled(lead, 'think'), 'Chat response')
@@ -158,7 +161,7 @@ def main():
                 count = len(chat.calls)
                 core.kill(); core.wait(timeout=10)
                 core = start()
-                assert next(h for h in api('GET', '/v1/bee/capabilities')['harnesses'] if h['id'] == 'deepseek')['chat_models'] == ['deepseek-v4.1-flash-free', 'deepseek-flash']
+                assert next(h for h in api('GET', '/v1/bee/capabilities')['harnesses'] if h['id'] == 'gemini')['chat_models'] == ['gemini-2.5-pro', 'gemini-2.5-flash']
                 assert state(lead)['mode'] == 'chat' and state(lead)['execution_session_id'] == native
                 assert state(peer)['receipts']['uncertain']['state'] == 'unknown_after_restart'
                 prompt(peer, 'uncertain', 'CHAT_FIXTURE_WAIT')

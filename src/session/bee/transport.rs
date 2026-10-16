@@ -14,10 +14,7 @@ pub(super) async fn complete(profile: &Profile, messages: &[Value]) -> Result<(S
     } else {
         json!({"model":profile.model,"messages":messages,"tool_choice":"none","stream":false})
     };
-    if matches!(profile.provider.as_str(), "deepseek" | "opencode") {
-        // Council carries the final text between bounded protocol steps. Disable
-        // thinking rather than attempting to replay private reasoning fields.
-        body["thinking"] = json!({"type":"disabled"});
+    if profile.provider == "gemini" {
         body["max_tokens"] = json!(8192);
     }
     let mut call = client.post(&profile.endpoint).json(&body);
@@ -33,19 +30,19 @@ pub(super) async fn complete(profile: &Profile, messages: &[Value]) -> Result<(S
         .await
         .map_err(|_| invalid("model request outcome uncertain"))?;
     if !response.status().is_success() {
-        if matches!(profile.provider.as_str(), "deepseek" | "opencode") {
+        if profile.provider == "gemini" {
             return Err(invalid(match response.status().as_u16() {
                 429 => {
-                    "DeepSeek provider rate limit reached; retry later. No alternative model was called."
+                    "Gemini provider rate limit reached; retry later. No alternative model was called."
                 }
                 401 | 403 => {
-                    "DeepSeek connection denied; check the selected provider's API key and model access. No alternative model was called."
+                    "Gemini connection denied; check the selected provider's API key and model access. No alternative model was called."
                 }
                 402 => {
-                    "DeepSeek provider requires account credit or access; check the selected provider account. No alternative model was called."
+                    "Gemini provider requires account credit or access; check the selected provider account. No alternative model was called."
                 }
                 _ => {
-                    "DeepSeek model unavailable or request rejected; check provider access. No alternative model was called."
+                    "Gemini model unavailable or request rejected; check provider access. No alternative model was called."
                 }
             }));
         }
@@ -111,17 +108,8 @@ pub(super) async fn complete(profile: &Profile, messages: &[Value]) -> Result<(S
     }
 }
 
-pub(super) fn deepseek_endpoint(provider: &str, model: &str, endpoint: &str) -> bool {
-    match provider {
-        "deepseek" => endpoint == "https://api.deepseek.com/chat/completions",
-        // Pin the promotional model: never substitute a billed model if the
-        // free offer expires or this account cannot access it.
-        "opencode" => {
-            model == "deepseek-v4.1-flash-free"
-                && endpoint == "https://opencode.ai/inference/openai/v1/chat/completions"
-        }
-        _ => false,
-    }
+pub(super) fn gemini_endpoint(endpoint: &str) -> bool {
+    endpoint == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 }
 
 pub(super) fn qwen_endpoint(url: &reqwest::Url) -> bool {
@@ -163,30 +151,17 @@ pub(super) fn qwen_endpoint(url: &reqwest::Url) -> bool {
 mod tests {
     use super::*;
     #[test]
-    fn deepseek_connections_cannot_cross_providers_or_fall_back_to_paid() {
-        let free = "https://opencode.ai/inference/openai/v1/chat/completions";
-        let direct = "https://api.deepseek.com/chat/completions";
-        assert!(deepseek_endpoint(
-            "opencode",
-            "deepseek-v4.1-flash-free",
-            free
-        ));
-        assert!(deepseek_endpoint("deepseek", "deepseek-flash", direct));
+    fn gemini_endpoint_requires_exact_official_url() {
+        let official = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+        assert!(gemini_endpoint(official));
         for endpoint in [
-            direct,
-            "http://opencode.ai/inference/openai/v1/chat/completions",
-            "https://opencode.ai.evil.invalid/inference/openai/v1/chat/completions",
-            "https://opencode.ai:8443/inference/openai/v1/chat/completions",
-            "https://opencode.ai/inference/openai/v1/chat/completions?key=leak",
+            "http://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+            "https://generativelanguage.googleapis.com.evil.invalid/v1beta/openai/chat/completions",
+            "https://generativelanguage.googleapis.com:8443/v1beta/openai/chat/completions",
+            "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions?key=leak",
         ] {
-            assert!(!deepseek_endpoint(
-                "opencode",
-                "deepseek-v4.1-flash-free",
-                endpoint
-            ));
+            assert!(!gemini_endpoint(endpoint));
         }
-        assert!(!deepseek_endpoint("opencode", "deepseek-v4.1-flash", free));
-        assert!(!deepseek_endpoint("deepseek", "deepseek-flash", free));
     }
     #[test]
     fn qwen_hosts_are_exact_official_endpoints() {

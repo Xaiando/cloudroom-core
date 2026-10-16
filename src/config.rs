@@ -100,12 +100,18 @@ impl Config {
             "devin" => Kind::Devin,
             "grok" => Kind::Grok,
             "qwen" => Kind::Qwen,
+            "gemini" => Kind::Gemini,
             _ => return Err(io::Error::other("unsupported CLOUDROOM_HARNESS")),
         };
         let account_home: PathBuf = required("CLOUDROOM_ACCOUNT_HOME")?.into();
-        if cfg!(windows) && !matches!(default_harness, Kind::Codex | Kind::Grok | Kind::Qwen) {
+        if cfg!(windows)
+            && !matches!(
+                default_harness,
+                Kind::Codex | Kind::Grok | Kind::Qwen | Kind::Gemini
+            )
+        {
             return Err(io::Error::other(
-                "The native Windows runtime currently supports Codex, Grok, and Qwen",
+                "The native Windows runtime currently supports Codex, Grok, Qwen, and Gemini",
             ));
         }
         let mut harnesses = BTreeMap::new();
@@ -205,11 +211,20 @@ impl Config {
         } else if let Some(profile) = discover_qwen(&account_home)? {
             harnesses.insert(Kind::Qwen, profile);
         }
+        if let Some(profile) =
+            explicit_harness("GEMINI", account_home.join(".gemini"), "gemini-2.5-pro")?
+        {
+            harnesses.insert(Kind::Gemini, profile);
+        } else if let Some(profile) = discover_gemini(&account_home)? {
+            harnesses.insert(Kind::Gemini, profile);
+        }
         if cfg!(windows) {
-            harnesses.retain(|kind, _| matches!(kind, Kind::Codex | Kind::Grok | Kind::Qwen));
+            harnesses.retain(|kind, _| {
+                matches!(kind, Kind::Codex | Kind::Grok | Kind::Qwen | Kind::Gemini)
+            });
             if harnesses.is_empty() {
                 return Err(io::Error::other(
-                    "Configure Codex, or install Grok (grok.exe) or Qwen (qwen) for this account",
+                    "Configure Codex, or install Grok (grok.exe), Qwen (qwen), or Gemini (gemini) for this account",
                 ));
             }
         }
@@ -361,18 +376,52 @@ fn discover_qwen(account_home: &std::path::Path) -> io::Result<Option<HarnessCon
     }))
 }
 
+fn discover_gemini(account_home: &std::path::Path) -> io::Result<Option<HarnessConfig>> {
+    let binary = [
+        account_home.join("AppData/Roaming/npm/gemini.cmd"),
+        account_home.join("AppData/Roaming/npm/gemini.exe"),
+        account_home.join(".local/bin/gemini"),
+        PathBuf::from("/usr/local/bin/gemini"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file());
+    let Some(binary) = binary else {
+        return Ok(None);
+    };
+    let home = account_home.join(".gemini");
+    if !home.is_dir() {
+        std::fs::create_dir_all(&home)?;
+    }
+    Ok(Some(HarnessConfig {
+        binary: node_entry(&binary),
+        home,
+        model: "gemini-2.5-pro".into(),
+        provider: None,
+    }))
+}
+
 /// An npm `.cmd` shim breaks a long-lived ACP pipe. Prefer the Node entry beside it.
 fn node_entry(binary: &std::path::Path) -> PathBuf {
     if binary.extension().and_then(|ext| ext.to_str()) != Some("cmd") {
         return binary.to_path_buf();
     }
-    let entry = binary.parent().map(|dir| {
-        dir.join("node_modules")
-            .join("@qwen-code")
-            .join("qwen-code")
-            .join("cli-entry.js")
-    });
-    entry
-        .filter(|path| path.is_file())
+    let Some(dir) = binary.parent() else {
+        return binary.to_path_buf();
+    };
+    let stem = binary
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
+    let candidates: &[&str] = match stem {
+        "gemini" => &[
+            "node_modules/@google/gemini-cli/dist/index.js",
+            "node_modules/@google/gemini-cli/bundle/gemini.js",
+        ],
+        _ => &["node_modules/@qwen-code/qwen-code/cli-entry.js"],
+    };
+    candidates
+        .iter()
+        .map(|rel| dir.join(rel))
+        .find(|path| path.is_file())
         .unwrap_or_else(|| binary.to_path_buf())
 }

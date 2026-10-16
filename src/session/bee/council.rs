@@ -211,7 +211,7 @@ async fn catalog(State(manager): State<Arc<Manager>>) -> Json<Value> {
     let mut profiles = cli::models(&manager);
     profiles.extend(manager.bee.profiles.lock().unwrap().clone());
     Json(
-        json!({"models":profiles.iter().map(|p|json!({"harness":p.harness,"model":p.model,"provider":p.provider})).collect::<Vec<_>>(),"setup":{"codex":"Sign in with Codex CLI and refresh its model catalog", "grok":"Sign in with Grok CLI; hooks, plugins and MCP must be disabled", "claude":"Install Claude Code, run claude auth login, then Refresh models", "qwen":"Connect a local Qwen model or an Alibaba API account", "deepseek":"Add the OpenCode Console key for DeepSeek Flash Free"},"access":["discuss","read","edit"],"max_members":5,"max_tasks":12,"max_steps":8}),
+        json!({"models":profiles.iter().map(|p|json!({"harness":p.harness,"model":p.model,"provider":p.provider})).collect::<Vec<_>>(),"setup":{"codex":"Sign in with Codex CLI and refresh its model catalog", "grok":"Sign in with Grok CLI; hooks, plugins and MCP must be disabled", "claude":"Install Claude Code, run claude auth login, then Refresh models", "qwen":"Connect a local Qwen model or an Alibaba API account", "gemini":"Add a Google Gemini API key in Chat connections"},"access":["discuss","read","edit"],"max_members":5,"max_tasks":12,"max_steps":8}),
     )
 }
 fn profile(manager: &Manager, member: &Member) -> Option<Profile> {

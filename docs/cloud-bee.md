@@ -16,7 +16,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Cloudroom\install\wi
 Cloudroom launchers and private `%LOCALAPPDATA%\CloudroomCore` settings remain
 compatible; no history or credentials are moved during the rename.
 
-1. Open **Chat connections**. Choose OpenAI API, xAI API, Anthropic API, Alibaba Qwen API, DeepSeek (OpenCode free or direct paid), or a local
+1. Open **Chat connections**. Choose OpenAI API, xAI API, Anthropic API, Alibaba Qwen API, Google Gemini API, or a local
    OpenAI-compatible server and an exact model ID. Local endpoints require a
    numeric loopback address, for example `http://127.0.0.1:11434/v1/chat/completions`.
    This does not install or start a local model server.
@@ -29,7 +29,7 @@ compatible; no history or credentials are moved during the rename.
 4. Send a task and inspect its transcript. Select **Chat** to review a result handoff
    without terminating background Work. **Interrupt** cancels its active turn.
    Model tabs retain their own modes. **Close** closes the conversation and its Work.
-5. Open **Council** for a shared GPT/Grok/Claude/Qwen/DeepSeek conversation. Enable models,
+5. Open **Council** for a shared GPT/Grok/Claude/Qwen/Gemini conversation. Enable models,
    select their exact configured IDs, choose a folder/access level, and send one
    message to all participants. Coordinate research microtasks and follow their
    dependencies and progress in the right panel. The earlier comparison view is
@@ -41,31 +41,15 @@ compatible; no history or credentials are moved during the rename.
    cannot write files. See [the Council/HTC guide](hive-traffic-control.md) for controls,
    supported scope, concurrency guarantees and recovery.
 
-## DeepSeek Flash
+## Gemini
 
-In **Chat connections**, choose **OpenCode → DeepSeek Flash Free (limited time)**.
-The exact model `deepseek-v4.1-flash-free` and endpoint are preset. Supply an
-**OpenCode Console API key**, save, then choose DeepSeek in a Chat conversation
-or enable its Council dropdown. No OpenCode CLI installation is required.
-Create/manage the key in [OpenCode Console](https://opencode.ai/console).
-Account access and provider limits apply; configuring a profile does not prove
-that your account can call the model. A free-model failure never selects a paid
-model or another provider. Retry explicitly after a rate limit.
-
-Alternatively choose **DeepSeek direct API (paid)** with a separate DeepSeek API
-key and model `deepseek-flash`. This connection uses
-`https://api.deepseek.com/chat/completions`; the free OpenCode connection uses
-`https://opencode.ai/inference/openai/v1/chat/completions`. Keys stay scoped to
-that connection and are never taken from CLI login files.
-
-As checked on October 16, 2026, [OpenCode lists the free model as a limited-time
-promotion](https://opencode.ai/v2/docs/console/models/), while the
-[direct DeepSeek API charges per token](https://api-docs.deepseek.com/quick_start/pricing/).
-Check the provider's current terms before use. Cloud Bee sends text, disables
-thinking for this bounded adapter, requests at most 8,192 output tokens, and
-supports Chat and Council research only. Native coding remains a separately
-authorized Codex Work task. A Council supports up to five distinct models;
-research execution retains its existing four-worker concurrency bound.
+In **Chat connections**, choose **Google Gemini API → Gemini**.
+The model `gemini-2.5-pro` and official OpenAI-compatible endpoint
+`https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` are
+preset. Supply a **Google AI Studio Gemini API key**, save, then choose Gemini in
+a Chat conversation or enable its Council dropdown. Keys stay scoped to that
+connection and are never taken from CLI login files. Account access and provider
+limits apply; a failure never selects another provider or fallback model.
 
 ## Capabilities and security
 
@@ -73,14 +57,14 @@ research execution retains its existing four-worker concurrency bound.
 | --- | --- | --- |
 | OpenAI model / Codex | Separate OpenAI API profile | Native Codex catalog models |
 | Grok | Separate xAI API profile | Unavailable |
+| Gemini | Separate Google Gemini API profile | Unavailable |
 | Local compatible server / Qwen | Local HTTP or Alibaba Model Studio API profile | Unavailable |
 | Claude / Anthropic | Separate Anthropic Messages API profile | Unavailable |
-| DeepSeek Flash | OpenCode limited-time free or separate paid DeepSeek API profile | Unavailable |
 
-OpenAI, xAI, Anthropic, and Alibaba API credentials/billing are distinct from consumer subscriptions.
-Native CLI logins are not extracted to make Chat calls. A profile is
+OpenAI, xAI, and Google Gemini API credentials/billing are distinct from consumer subscriptions.
+Codex, Grok, and Gemini CLI logins are not extracted to make Chat calls. A profile is
 configuration, not proof that a particular model/account is accepted by the API.
-There is no provider or model fallback. Native Grok/Qwen sessions from existing
+There is no provider or model fallback. Native Grok/Qwen/Gemini sessions from existing
 work remain accessible; starting a new legacy session requires the separate
 legacy authorization checkbox. Legacy sessions retain their original permissions
 and cannot be relabeled as tool-free Chat.

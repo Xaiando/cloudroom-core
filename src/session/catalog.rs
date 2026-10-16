@@ -144,7 +144,8 @@ impl Manager {
                 | runtime::Kind::Hermes
                 | runtime::Kind::Devin
                 | runtime::Kind::Grok
-                | runtime::Kind::Qwen => {
+                | runtime::Kind::Qwen
+                | runtime::Kind::Gemini => {
                     let capabilities = runtime::cursor::capabilities(*kind);
                     for (key, value) in capabilities.as_object().unwrap() {
                         harness[key] = value.clone();
@@ -155,6 +156,7 @@ impl Manager {
                         runtime::Kind::Devin => runtime::DEVIN_REASONING_LEVELS,
                         runtime::Kind::Grok => runtime::GROK_REASONING_LEVELS,
                         runtime::Kind::Qwen => runtime::QWEN_REASONING_LEVELS,
+                        runtime::Kind::Gemini => runtime::GEMINI_REASONING_LEVELS,
                         _ => runtime::PI_REASONING_LEVELS,
                     });
                     // Cursor's print mode has no image input; Cursor and OpenCode open images from the attached path.
@@ -176,6 +178,9 @@ impl Manager {
                     }
                     if *kind == runtime::Kind::Qwen {
                         harness["models"] = json!(runtime::qwen_models());
+                    }
+                    if *kind == runtime::Kind::Gemini {
+                        harness["models"] = json!(runtime::gemini_models());
                     }
                 }
                 runtime::Kind::Pi => {
@@ -247,6 +252,7 @@ impl Manager {
                     | runtime::Kind::Devin
                     | runtime::Kind::Grok
                     | runtime::Kind::Qwen
+                    | runtime::Kind::Gemini
             ) && session.reasoning.as_deref() != Some(reasoning)
             {
                 return Err(Error::Conflict("invalid reasoning effort"));
@@ -273,6 +279,7 @@ impl Manager {
                 .as_deref()
                 .is_some_and(|selected| runtime::grok_accepts(selected, reasoning)),
             runtime::Kind::Qwen => runtime::QWEN_REASONING_LEVELS.contains(&reasoning),
+            runtime::Kind::Gemini => runtime::GEMINI_REASONING_LEVELS.contains(&reasoning),
         };
         if !supported {
             return Err(Error::Conflict("invalid reasoning effort"));

@@ -7,7 +7,7 @@ using Microsoft.Win32;
 
 namespace Cloudroom.Desktop;
 
-public sealed record CouncilModel(string Harness, string Model, string Provider) { public string Label => Model + (Provider.EndsWith("_cli", StringComparison.Ordinal) ? " · CLI login" : Provider == "opencode" ? " · OpenCode" : Provider == "deepseek" ? " · direct" : Harness == "local" ? " · local" : ""); }
+public sealed record CouncilModel(string Harness, string Model, string Provider) { public string Label => Model + (Provider.EndsWith("_cli", StringComparison.Ordinal) ? " · CLI login" : Provider == "gemini" ? " · Gemini API" : Harness == "local" ? " · local" : ""); }
 public sealed record CouncilSaved(string Id, string Title, string State) { public string Label => Title + " · " + State.Replace('_', ' '); }
 public sealed record CouncilTaskView(string Title, string Owner, string State, string Activity, string Result, string Operations, string Timing, bool Busy, double Progress, int Index, string RoundId, bool WorkAllowed);
 public partial class MainWindow
@@ -21,7 +21,7 @@ public partial class MainWindow
     private int councilBefore;
     private readonly SortedDictionary<int, JsonNode> councilRounds = [];
     private readonly Dictionary<string, string> councilDrafts = [];
-    private (CheckBox Enable, ComboBox Models, TextBlock Status, string Harness)[] CouncilSlots => [(CouncilGptOn, CouncilGptModel, CouncilGptStatus, "codex"), (CouncilGrokOn, CouncilGrokModel, CouncilGrokStatus, "grok"), (CouncilClaudeOn, CouncilClaudeModel, CouncilClaudeStatus, "claude"), (CouncilQwenOn, CouncilQwenModel, CouncilQwenStatus, "qwen"), (CouncilDeepSeekOn, CouncilDeepSeekModel, CouncilDeepSeekStatus, "deepseek")];
+    private (CheckBox Enable, ComboBox Models, TextBlock Status, string Harness)[] CouncilSlots => [(CouncilGptOn, CouncilGptModel, CouncilGptStatus, "codex"), (CouncilGrokOn, CouncilGrokModel, CouncilGrokStatus, "grok"), (CouncilClaudeOn, CouncilClaudeModel, CouncilClaudeStatus, "claude"), (CouncilQwenOn, CouncilQwenModel, CouncilQwenStatus, "qwen"), (CouncilGeminiOn, CouncilGeminiModel, CouncilGeminiStatus, "gemini")];
     private async Task OpenCouncilWorkspace()
     {
         if (client == null || !connected) throw new IOException("Connect to Core first.");
@@ -142,14 +142,12 @@ public partial class MainWindow
     {
         if (ProfileEndpoint == null || ProfileModel == null || ProfileNotice == null) return;
         string provider = ComboTag(ProfileProvider);
-        ProfileModel.IsReadOnly = provider == "opencode";
-        ProfileNotice.Text = provider == "opencode" ? "Limited-time free model via OpenCode. Use an OpenCode Console API key. Account access and provider limits apply. No switch to paid models if unavailable."
-            : provider == "deepseek" ? "Direct DeepSeek API is billed per token. Use a DeepSeek API key; this is separate from OpenCode's free offer."
+        ProfileModel.IsReadOnly = false;
+        ProfileNotice.Text = provider == "gemini" ? "Google Gemini API (OpenAI-compatible endpoint). Use a Gemini API key from Google AI Studio. Account access and provider limits apply."
             : "";
-        if (provider == "opencode") { ProfileModel.Text = "deepseek-v4.1-flash-free"; ProfileEndpoint.Text = "https://opencode.ai/inference/openai/v1/chat/completions"; }
-        if (provider == "deepseek") { ProfileModel.Text = "deepseek-flash"; ProfileEndpoint.Text = "https://api.deepseek.com/chat/completions"; }
-        ProfileEndpoint.IsReadOnly = provider is "opencode" or "deepseek";
-        ProfileEndpointLabel.Text = provider is "opencode" or "deepseek" ? "Provider endpoint (preset)" : "Endpoint for Local or Qwen API (use your regional Model Studio URL)";
+        if (provider == "gemini") { ProfileModel.Text = "gemini-2.5-pro"; ProfileEndpoint.Text = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"; }
+        ProfileEndpoint.IsReadOnly = provider == "gemini";
+        ProfileEndpointLabel.Text = provider == "gemini" ? "Provider endpoint (preset)" : "Endpoint for Local or Qwen API (use your regional Model Studio URL)";
         if (provider == "dashscope" && !ProfileEndpoint.Text.Contains("aliyuncs.com", StringComparison.Ordinal)) ProfileEndpoint.Text = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions";
         if (provider == "local" && !ProfileEndpoint.Text.StartsWith("http://127.", StringComparison.Ordinal)) ProfileEndpoint.Text = "http://127.0.0.1:11434/v1/chat/completions";
     }
@@ -265,16 +263,14 @@ public partial class MainWindow
     {
         if (!CouncilNavButton.IsVisible || !CouncilNavButton.IsEnabled) throw new IOException("Council sidebar navigation is hidden or unavailable.");
         ShowChatSetup(this, new RoutedEventArgs());
-        SelectTag(ProfileProvider, "opencode");
-        if (ProfileModel.Text != "deepseek-v4.1-flash-free" || !ProfileModel.IsReadOnly || ProfileEndpoint.Text != "https://opencode.ai/inference/openai/v1/chat/completions" || !ProfileNotice.Text.Contains("OpenCode Console API key")) throw new IOException("Free DeepSeek connection preset is incorrect.");
-        await Capture(Path.Combine(output, "cloud-bee-deepseek-free.png"));
-        SelectTag(ProfileProvider, "deepseek");
-        if (ProfileModel.Text != "deepseek-flash" || ProfileModel.IsReadOnly || ProfileEndpoint.Text != "https://api.deepseek.com/chat/completions" || !ProfileNotice.Text.Contains("billed per token")) throw new IOException("Direct DeepSeek connection preset is incorrect.");
+        SelectTag(ProfileProvider, "gemini");
+        if (ProfileModel.Text != "gemini-2.5-pro" || ProfileModel.IsReadOnly || !ProfileEndpoint.IsReadOnly || ProfileEndpoint.Text != "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" || !ProfileNotice.Text.Contains("Google Gemini API")) throw new IOException("Gemini connection preset is incorrect.");
+        await Capture(Path.Combine(output, "cloud-bee-gemini.png"));
         CloseChatSetup(this, new RoutedEventArgs());
         await OpenCouncilWorkspace();
         foreach (var slot in CouncilSlots)
         {
-            string model = slot.Harness switch { "codex" => "gpt-fixture", "grok" => "grok-fixture", "claude" => "claude-fixture", "deepseek" => "deepseek-v4.1-flash-free", _ => "qwen-fixture" };
+            string model = slot.Harness switch { "codex" => "gpt-fixture", "grok" => "grok-fixture", "claude" => "claude-fixture", "gemini" => "gemini-2.5-pro", _ => "qwen-fixture" };
             slot.Models.SelectedItem = slot.Models.Items.OfType<CouncilModel>().FirstOrDefault(m => m.Model == model) ?? throw new IOException("Council fixture model missing: " + model);
             slot.Enable.IsChecked = true;
         }
@@ -289,7 +285,7 @@ public partial class MainWindow
         await SendCouncilMessage();
         var deadline = DateTime.UtcNow.AddSeconds(20);
         do { await RefreshCouncilWorkspace(); if (CouncilTasks.Items.OfType<CouncilTaskView>().Any(t => t.Busy)) break; await Task.Delay(50); } while (DateTime.UtcNow < deadline);
-        if (!CouncilTasks.Items.OfType<CouncilTaskView>().Any(t => t.Busy) || !councilBusy || CouncilConversation.Items.OfType<ChatMessage>().Count(m => m.Role.EndsWith("-fixture", StringComparison.Ordinal) || m.Role == "deepseek-v4.1-flash-free") != 5) throw new IOException("Council did not show all model replies and live microtask progress.");
+        if (!CouncilTasks.Items.OfType<CouncilTaskView>().Any(t => t.Busy) || !councilBusy || CouncilConversation.Items.OfType<ChatMessage>().Count(m => m.Role.EndsWith("-fixture", StringComparison.Ordinal) || m.Role == "gemini-2.5-pro") != 5) throw new IOException("Council did not show all model replies and live microtask progress.");
         string actualFolder = CouncilFolder.Text;
         CouncilFolder.Text = "Disposable fixture workspace · shared by all models";
         await Capture(Path.Combine(output, "cloud-bee-council-coordinated.png"));
@@ -309,7 +305,7 @@ public partial class MainWindow
         do { await RefreshCouncilWorkspace(); if (!councilBusy) break; await Task.Delay(50); } while (DateTime.UtcNow < deadline);
         if (!CouncilOverall.Text.StartsWith("CANCELLED", StringComparison.Ordinal)) throw new IOException("Council cancellation did not settle its owned workers.");
         await client.Post("/v1/fixture/council/release", new JsonObject());
-        CouncilGrokOn.IsChecked = CouncilClaudeOn.IsChecked = CouncilDeepSeekOn.IsChecked = false; CouncilCoordinate.IsChecked = false;
+        CouncilGrokOn.IsChecked = CouncilClaudeOn.IsChecked = CouncilGeminiOn.IsChecked = false; CouncilCoordinate.IsChecked = false;
         await RefreshCouncilWorkspace();
         if (CouncilGrokOn.IsChecked == true || CouncilClaudeOn.IsChecked == true) throw new IOException("Polling overwrote the next message's model selection.");
         CouncilComposer.Text = "Only GPT and Qwen this time"; await SendCouncilMessage();
@@ -318,6 +314,6 @@ public partial class MainWindow
         var latest = CouncilConversation.Items.OfType<ChatMessage>().TakeLast(3).ToList();
         if (latest.Count != 3 || latest[0].Role != "YOU" || latest[1].Role != "gpt-fixture" || latest[2].Role != "qwen-fixture" || CouncilConversation.Items.OfType<ChatMessage>().Count(m => m.Role == "claude-fixture") != 2) throw new IOException("Changed Council membership lost prior replies or sent to a disabled model.");
         DismissCouncilWorkspace(this, new RoutedEventArgs());
-        await File.WriteAllTextAsync(Path.Combine(output, "council-result.json"), new JsonObject { ["passed"] = true, ["checks"] = "five provider selectors including DeepSeek Flash Free, shared broadcast, immutable lost-acceptance retry, live microtask progress and dependencies, synthesis, folder/access, cancellation, saved history and drafts" }.ToJsonString());
+        await File.WriteAllTextAsync(Path.Combine(output, "council-result.json"), new JsonObject { ["passed"] = true, ["checks"] = "five provider selectors including Gemini, shared broadcast, immutable lost-acceptance retry, live microtask progress and dependencies, synthesis, folder/access, cancellation, saved history and drafts" }.ToJsonString());
     }
 }

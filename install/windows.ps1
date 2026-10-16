@@ -73,6 +73,16 @@ function Find-QwenBinary {
     return $null
 }
 
+function Find-GeminiBinary {
+    foreach ($name in @('gemini.exe', 'gemini.cmd')) {
+        $command = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($command -and $command.Source -notlike '*.ps1') { return $command.Source }
+    }
+    $npm = Join-Path $env:APPDATA 'npm\gemini.cmd'
+    if (Test-Path -LiteralPath $npm) { return (Resolve-Path -LiteralPath $npm).Path }
+    return $null
+}
+
 function Invoke-CoreApi($Config, $Verb, $Path, $JsonBody, $TimeoutSeconds = 15) {
     if (!$Path.StartsWith('/v1/') -or $Path.Contains('://')) { throw 'ApiPath must start with /v1/.' }
     $baseUri = [Uri]('http://' + $Config.CLOUDROOM_LISTEN)
@@ -231,6 +241,8 @@ if ($Action -eq 'Check') {
     [pscustomobject]@{ Tool = 'grok'; Available = [bool]$grokBinary; Path = $grokBinary }
     $qwenBinary = Find-QwenBinary
     [pscustomobject]@{ Tool = 'qwen'; Available = [bool]$qwenBinary; Path = $qwenBinary }
+    $geminiBinary = Find-GeminiBinary
+    [pscustomobject]@{ Tool = 'gemini'; Available = [bool]$geminiBinary; Path = $geminiBinary }
     [pscustomobject]@{ Tool = 'cloudroom'; Available = (Test-Path -LiteralPath $CoreBinary); Path = $CoreBinary }
     return
 }
@@ -308,6 +320,14 @@ if ($Action -eq 'Configure') {
         $config.CLOUDROOM_QWEN_BINARY = $qwenBinary
         $config.CLOUDROOM_QWEN_HOME = (Resolve-Path -LiteralPath $qwenHome).Path
         $config.CLOUDROOM_QWEN_MODEL = 'qwen3-coder-plus'
+    }
+    $geminiBinary = Find-GeminiBinary
+    if ($geminiBinary) {
+        $geminiHome = Join-Path $env:USERPROFILE '.gemini'
+        if (!(Test-Path -LiteralPath $geminiHome)) { [void][System.IO.Directory]::CreateDirectory($geminiHome) }
+        $config.CLOUDROOM_GEMINI_BINARY = $geminiBinary
+        $config.CLOUDROOM_GEMINI_HOME = (Resolve-Path -LiteralPath $geminiHome).Path
+        $config.CLOUDROOM_GEMINI_MODEL = 'gemini-2.5-pro'
     }
     [System.IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json), [System.Text.UTF8Encoding]::new($false))
     Write-Output "Configured native Windows Core. Private settings: $configPath"

@@ -675,6 +675,7 @@ impl Manager {
                 runtime::grok_accepts(selected, reasoning)
             }
             runtime::Kind::Qwen => runtime::QWEN_REASONING_LEVELS.contains(&reasoning),
+            runtime::Kind::Gemini => runtime::GEMINI_REASONING_LEVELS.contains(&reasoning),
         };
         if !supported {
             return Err(Error::Conflict("invalid reasoning effort"));

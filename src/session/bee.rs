@@ -225,6 +225,14 @@ fn council_routes() -> Router<Arc<Manager>> {
 async fn capabilities(State(manager): State<Arc<Manager>>) -> Json<Value> {
     let mut core = manager.capabilities().await;
     let mut harnesses = core["harnesses"].as_array().cloned().unwrap_or_default();
+    if !harnesses.iter().any(|h| h["id"] == "gemini") {
+        harnesses.push(json!({
+            "id": "gemini",
+            "model": "gemini-2.5-pro",
+            "models": crate::runtime::gemini_models(),
+            "reasoning_levels": crate::runtime::GEMINI_REASONING_LEVELS,
+        }));
+    }
     for harness in &mut harnesses {
         harness["work_models"] = if harness["id"] == "codex" {
             json!(
@@ -325,6 +333,16 @@ async fn configure(
             profile.endpoint == "https://api.x.ai/v1/chat/completions"
                 && !profile.api_key.is_empty()
         }
+        ("gemini", "gemini") => {
+            !profile.api_key.is_empty()
+                && (transport::gemini_endpoint(&profile.endpoint)
+                    || std::env::var("CLOUDROOM_UNPROTECTED_TEST_MODE").as_deref() == Ok("1")
+                        && url.scheme() == "http"
+                        && url.host_str().is_some_and(|h| {
+                            h.parse::<std::net::IpAddr>()
+                                .is_ok_and(|ip| ip.is_loopback())
+                        }))
+        }
         ("anthropic", "claude") => {
             !profile.api_key.is_empty()
                 && (profile.endpoint == "https://api.anthropic.com/v1/messages"
@@ -336,22 +354,7 @@ async fn configure(
                         }))
         }
         ("dashscope", "qwen") => transport::qwen_endpoint(&url) && !profile.api_key.is_empty(),
-        ("deepseek" | "opencode", "deepseek") => {
-            !profile.api_key.is_empty()
-                && (transport::deepseek_endpoint(
-                    &profile.provider,
-                    &profile.model,
-                    &profile.endpoint,
-                ) || std::env::var("CLOUDROOM_UNPROTECTED_TEST_MODE").as_deref() == Ok("1")
-                    && (profile.provider != "opencode"
-                        || profile.model == "deepseek-v4.1-flash-free")
-                    && url.scheme() == "http"
-                    && url.host_str().is_some_and(|h| {
-                        h.parse::<std::net::IpAddr>()
-                            .is_ok_and(|ip| ip.is_loopback())
-                    }))
-        }
-        ("local", "local" | "qwen" | "codex" | "grok" | "claude") => {
+        ("local", "local" | "qwen" | "gemini" | "codex" | "grok" | "claude") => {
             (!matches!(profile.harness.as_str(), "codex" | "grok" | "claude")
                 || std::env::var("CLOUDROOM_UNPROTECTED_TEST_MODE").as_deref() == Ok("1"))
                 && url.scheme() == "http"
@@ -408,7 +411,7 @@ async fn create(
             .config
             .harnesses
             .contains_key(&crate::runtime::Kind::Codex);
-    if !chat && !work {
+    if !chat && !work && !matches!(start.harness.as_str(), "gemini" | "grok" | "qwen") {
         return Err(invalid("no managed mode is available for this model"));
     }
     if start.model.is_empty()
@@ -874,9 +877,7 @@ async fn chat(manager: Arc<Manager>, id: String, request: String, profile: Profi
     }
     .await;
     let failure = match &result {
-        Err(Error::Conflict(message))
-            if matches!(profile.provider.as_str(), "deepseek" | "opencode") =>
-        {
+        Err(Error::Conflict(message)) if profile.provider == "gemini" => {
             manager.bee.redact(message, &manager.config.token)
         }
         _ => "Chat failed or its outcome is uncertain. No tools were executed. Check the API profile and saved history before sending a new request.".into(),

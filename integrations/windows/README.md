@@ -43,7 +43,7 @@ An explicitly selected settings file/data directory is always honored.
 
 Open **Council of AI** in the sidebar to enable models and select their exact
 configured IDs. The five selectors cover GPT, Grok, Claude, Qwen/Local and
-DeepSeek. Providers without a Chat connection remain disabled; add credentials
+Gemini. Providers without a Chat connection remain disabled; add credentials
 through **Chat connections**. See [the Cloud Bee guide](../../docs/cloud-bee.md).
 
 Create a session with the selected model and reasoning level, optionally in a new project folder. Send messages, watch live output, expand command output, browse saved sessions, pause/resume the queue, interrupt a running turn, close a session, or open its folder. Enter sends; Shift+Enter adds a line. Closing a session preserves history.
