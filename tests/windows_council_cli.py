@@ -28,6 +28,9 @@ def main():
         (home / '.grok/config.toml').write_text("[ui]\nyolo = true\n[[marketplace.sources]]\nname = 'official'\ngit = 'https://example.com/plugins'\n")
         wrapper = root / 'fixture.cmd'
         wrapper.write_text(f'@echo off\r\n"{sys.executable}" -u "{ROOT / "tests/council_cli_fixture.py"}" %*\r\n')
+        (home / '.local/bin').mkdir(parents=True)
+        (home / '.claude').mkdir()
+        (home / '.local/bin/claude.cmd').write_text(f'@echo off\r\n"{sys.executable}" -u "{ROOT / "tests/claude_council_fixture.py"}" %*\r\n')
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
@@ -53,8 +56,8 @@ def main():
                     except OSError: return False
                 until(ready, 'Core ready')
                 catalog = api('GET', '/v1/bee/councils/catalog')
-                assert len(catalog['models']) == 6 and 'NEVER_EXPORT_THIS' not in json.dumps(catalog), catalog
-                members = [dict(harness='codex', model='fixture', provider='codex_cli'), dict(harness='grok', model='grok-4.7', provider='grok_cli')]
+                assert len(catalog['models']) == 9 and 'NEVER_EXPORT_THIS' not in json.dumps(catalog), catalog
+                members = [dict(harness='codex', model='fixture', provider='codex_cli'), dict(harness='grok', model='grok-4.7', provider='grok_cli'), dict(harness='claude', model='haiku', provider='claude_cli')]
                 def create(key, selected=members, expected=200):
                     return api('POST', '/v1/bee/councils', dict(request_id=key,title='CLI Council',members=selected,workspace=None,access='discuss',authorize_access=False), expected)
                 create('no_fallback', [dict(harness='codex', model='fixture')], 409)
@@ -70,6 +73,13 @@ def main():
                 r = round_done('hello')
                 assert r['state'] == 'completed' and len(r['tasks']) == 2 and all(t['state'] == 'completed' for t in r['tasks']), r
                 assert r['members'] == members
+                assert r['replies'][2]['text'] == 'Claude fixture reply'
+                api('POST', route + '/messages',dict(request_id='claude_tool',text='CLI_TOOLS',coordinate=False,members=members[2:]))
+                assert round_done('claude_tool')['replies'][0]['state'] == 'failed'
+                (home / '.claude/no-login').write_text('')
+                api('POST', route + '/messages',dict(request_id='claude_login',text='hello',coordinate=False,members=members[2:]))
+                assert 'Sign in' in round_done('claude_login')['replies'][0]['text']
+                (home / '.claude/no-login').unlink()
                 api('POST', route + '/messages',dict(request_id='tool',text='CLI_TOOLS',coordinate=False,members=members[:1]))
                 assert round_done('tool')['replies'][0]['state'] == 'failed'
                 unsafe = create('unsafe', [dict(harness='codex',model='unsafe',provider='codex_cli')])['council_id']
@@ -83,7 +93,7 @@ def main():
                 handle.wait()
                 (home / '.grok/hooks.json').write_text('{}')
                 assert all(m['provider'] != 'grok_cli' for m in api('GET', '/v1/bee/councils/catalog')['models'])
-                create('blocked_hooks', members[1:], 409)
+                create('blocked_hooks', members[1:2], 409)
                 assert not list(repo.iterdir()), 'CLI accessed the real workspace'
                 core.terminate()
                 core.wait(timeout=15)

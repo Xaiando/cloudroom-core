@@ -52,11 +52,14 @@ Chat is text-only; unsupported modes stay unavailable. Work supports native Code
 with reviewed context and explicit workspace authorization.
 
 Council has GPT/Grok/Claude/Qwen/DeepSeek model selectors, shared messages,
-dependency microtasks and live progress. GPT and Grok can use existing Codex/Grok
-CLI logins without API profiles. Other Council providers currently use API
-connections. Account access and limits apply. CLI text requests disable execution
-tools; Codex verifies its tool policy locally before sending. Grok custom hooks,
-MCP and plugins must be disabled. Choose a local folder and shared access when creating
+dependency microtasks and live progress. GPT, Grok and Claude can use existing
+CLI logins without API profiles. Claude requires Claude Code 2.1.299+ and
+claude auth login with a subscription account. Qwen supports a local compatible
+server such as Ollama, or an Alibaba API profile. Save connections and click
+Refresh models in Council. Account access and limits apply. CLI text requests
+disable execution tools; Codex verifies its tool policy locally before sending.
+Grok custom hooks, MCP and plugins must be disabled. Claude managed policy
+requires a separate verified integration. Choose a local folder and shared access when creating
 one. API Chat participants may discuss/read approved files but cannot write them.
 Choose isolated Work access on a clean Git project, then Run isolated Work on a
 microtask. Native Codex workers run in separate detached Git worktrees. Git for
@@ -98,6 +101,9 @@ time), supply an OpenCode Console API key, then select DeepSeek in Chat or
 Council. The pinned free model never falls back to a paid one. The separate
 DeepSeek direct API option requires a DeepSeek key and is paid. Check current
 access/terms: https://opencode.ai/v2/docs/console/models/
+Create a key at https://opencode.ai/console/ under Keys -> Add Service Account
+-> Add API Key, with Inference only permissions. Paste it into Cloud Bee and
+Save connection, then Refresh models in Council. Never share the key in chat.
 
 If a Codex app update removes the saved CLI path, the launcher rediscovers the
 installed executable while preserving other runtime settings.

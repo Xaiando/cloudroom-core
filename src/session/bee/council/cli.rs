@@ -149,6 +149,7 @@ pub(super) fn models(manager: &Manager) -> Vec<Profile> {
             });
         }
     }
+    all.extend(super::claude::models(manager));
     all
 }
 
@@ -175,7 +176,7 @@ impl Drop for Scratch {
     }
 }
 
-fn command(manager: &Manager, binary: &FsPath, root: &FsPath) -> Command {
+pub(super) fn command(manager: &Manager, binary: &FsPath, root: &FsPath) -> Command {
     let mut cmd = Command::new(binary);
     cmd.env_clear();
     // Only OS startup variables; neither Core credentials nor saved API keys.
@@ -209,7 +210,7 @@ fn command(manager: &Manager, binary: &FsPath, root: &FsPath) -> Command {
         .kill_on_drop(true);
     cmd
 }
-async fn run(mut cmd: Command, input: &[u8]) -> Result<Vec<u8>> {
+pub(super) async fn run(mut cmd: Command, input: &[u8]) -> Result<Vec<u8>> {
     let (mut child, job) = crate::runtime::linux::spawn(&mut cmd)
         .map_err(|_| invalid("Council CLI could not start"))?;
     let mut stdin = child
@@ -419,6 +420,7 @@ pub(super) async fn complete(
     let root = &scratch.0;
     let prompt = serde_json::to_vec(&json!({"instruction":"Respond to the final user message in this conversation. Text only; no tool use. JSON requested by the Council protocol is ordinary response text.","messages":messages})).map_err(io::Error::other)?;
     match profile.provider.as_str() {
+        "claude_cli" => super::claude::complete(manager, profile, root, &prompt).await,
         "codex_cli" => {
             let p = harness(manager, Kind::Codex).ok_or(invalid("Codex CLI is unavailable"))?;
             let model = codex_catalog(&p.home)

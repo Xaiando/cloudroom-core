@@ -1,7 +1,7 @@
 # Council with existing CLI sign-ins on Windows
 
-Council discovers Codex and Grok CLI models without creating API profiles. Open
-**Council of AI**, enable GPT or Grok, choose a model labelled **CLI login**, and
+Council discovers Codex, Grok and Claude Code CLI models without creating API profiles. Open
+**Council of AI**, enable GPT, Grok or Claude, choose a model labelled **CLI login**, and
 send a message. Each enabled participant receives the message. Coordination,
 microtask progress, history, shared folder access and HTC remain in the same GUI.
 
@@ -13,10 +13,30 @@ account access when sending. CLI account limits and billing still apply. Cloud
 Bee does not copy OAuth credentials into API profiles or switch to a paid API
 after a CLI failure. Existing Chat API connections remain available separately.
 
-Claude, Qwen and DeepSeek Council participants currently use their API
-connections. Native Council transports for their CLI accounts are not implemented.
-The model selectors show this requirement rather than presenting an empty list
-as though it were usable. Normal Work CLI integrations are separate.
+Claude requires native Claude Code 2.1.299 or newer, installed under the configured
+account's `.local/bin` or `AppData/Roaming/npm`. Run `claude auth login` with your
+subscription account, then **Refresh models**. Council offers the `sonnet`, `opus`
+and `haiku` aliases; the CLI resolves them and checks account access when sending.
+An API-key-only Claude CLI login does not qualify for this subscription transport.
+
+Qwen can use a local OpenAI-compatible server. In **Chat connections**, choose
+the local server provider, enter its completion endpoint (for example
+`http://127.0.0.1:11434/v1/chat/completions` for Ollama) and an already installed
+model such as `qwen2.5:7b`. Save, then **Refresh models** in Council and choose it
+in the Qwen / Local selector. Alibaba Qwen API profiles also work. Qwen Code's
+legacy OAuth free tier ended on April 15, 2026; see its
+[authentication guide](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/auth/).
+
+For DeepSeek, sign in to [OpenCode Console](https://opencode.ai/console/).
+Open **Keys → Add Service Account**, name it, then **Add API Key**, choose
+**Inference only**, and create the key. Paste it privately into Cloud Bee's
+**Chat connections → OpenCode → DeepSeek Flash Free** and save the connection.
+Keep `deepseek-v4.1-flash-free` selected, then **Refresh models** in Council.
+OpenCode lists this model as free for a limited time; access and account
+requirements can change. No paid model is substituted after a failure. See the
+[key instructions](https://opencode.ai/v2/docs/console/api/) and
+[current model pricing](https://opencode.ai/v2/docs/console/models/).
+Normal Work CLI integrations are separate from these Council text transports.
 
 Council CLI participants are text transports, not unrestricted coding agents:
 
@@ -33,6 +53,12 @@ Council CLI participants are text transports, not unrestricted coding agents:
   `dontAsk` permissions and one model turn. Because Grok does not provide a global
   customization bypass, Council refuses accounts with hooks, MCP, plugins,
   managed configuration or customization references in `config.toml`.
+- Claude uses its normal subscription login with safe mode, empty settings
+  sources, disabled memory and file mentions, no built-in tools and an empty
+  strict MCP configuration. Hooks, plugins and slash commands are disabled.
+  Council rejects managed policy files or registry settings, unsupported CLI
+  versions, nonempty tool registries and tool-use output. It does not use bare
+  mode, because that mode ignores Claude's OAuth login.
 - CLI children inherit only selected Windows startup variables, not Core's token,
   saved environment credentials or API keys. Each call owns a kill-on-close
   Windows Job Object, has a 120-second deadline and a 2 MiB output limit.
@@ -48,4 +74,4 @@ shared folder access.
 Validation: `tests/windows_council_cli.py` uses disposable fixture CLIs and no
 real accounts. It covers selection without API profiles, backend identity,
 coordination, rejected tool registries/events, cancellation with descendant
-cleanup and the Grok customization guard.
+cleanup, Claude subscription-login enforcement and the Grok customization guard.
