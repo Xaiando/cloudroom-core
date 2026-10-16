@@ -36,6 +36,13 @@ OpenCode lists this model as free for a limited time; access and account
 requirements can change. No paid model is substituted after a failure. See the
 [key instructions](https://opencode.ai/v2/docs/console/api/) and
 [current model pricing](https://opencode.ai/v2/docs/console/models/).
+On October 16, 2026, live checks with a valid Console key returned HTTP 403
+`FreeTierError`: the free tier can only be used from within OpenCode. The same
+request was rejected through official OpenCode CLI 1.19.3 and 2.0.31 in headless
+mode. A successful key check or a listed model therefore does not establish
+free inference access from Cloud Bee. Creating another key does not resolve
+this provider restriction. This free connection remains blocked until the
+provider permits it; use of a paid provider requires a separate explicit choice.
 Normal Work CLI integrations are separate from these Council text transports.
 
 Council CLI participants are text transports, not unrestricted coding agents:

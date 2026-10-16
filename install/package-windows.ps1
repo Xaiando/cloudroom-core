@@ -104,6 +104,11 @@ access/terms: https://opencode.ai/v2/docs/console/models/
 Create a key at https://opencode.ai/console/ under Keys -> Add Service Account
 -> Add API Key, with Inference only permissions. Paste it into Cloud Bee and
 Save connection, then Refresh models in Council. Never share the key in chat.
+Availability limitation: a valid Console key can still receive HTTP 403
+FreeTierError because OpenCode restricts its free tier to OpenCode. Live checks
+on 2026-10-16 also failed through official headless OpenCode CLI 1.19.3/2.0.31.
+Free DeepSeek inference from Cloud Bee is not verified as available. No paid
+model is substituted; creating another key does not fix this access restriction.
 
 If a Codex app update removes the saved CLI path, the launcher rediscovers the
 installed executable while preserving other runtime settings.
