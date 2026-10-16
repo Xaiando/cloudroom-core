@@ -22,11 +22,11 @@ Cloud Bee, not to the separate original-desktop preview or Linux Core.
 | --- | --- | --- |
 | Native launcher, GUI and reconnect | Available | Ordinary-user launcher, connection errors, hidden Core, durable request retry and conversation drafts |
 | Chat / Work modes | Partial | Tool-free API Chat, reviewed Codex Work handoffs, independent modes; richer interactive approvals and other Work providers pending |
-| Council of AI | Partial | Broadcast and response comparison, saved membership; cross-provider council and autonomous deliberation pending |
+| Council of AI | Partial | Four-provider shared conversation, dependency research plans/progress, explicit isolated native Work and HTC review/queues; automatic coding delegation, additional Work providers and branch merges pending |
 | Conversation history | Available | Local journal, reconnect, replay without duplicate messages, interrupted execution recovery |
 | Conversation organization | Available | Saved names, pins, collections, search by title/model/folder/collection, sidebar archive/restore; archive leaves running work alone |
 | Full transcript search | Pending | Search indexed message and tool content with stable result navigation |
-| Projects and environments | Partial | Separate managed workspace folders; arbitrary existing project registration, Git checkout/worktree creation and environment lifecycle pending |
+| Projects and environments | Partial | Managed folders plus Council-selected existing Git roots and detached HTC worktrees; general project/environment lifecycle and branch integration pending |
 | Conversation presentation | Partial | Native selectable Markdown, tables, lists, basic code coloring, heading/file links and tool output; richer media/diagram rendering pending |
 | Attachments and file work | Partial | Native workspace browser, UTF-8 previews/editing, revision conflicts, comparison and recovery drafts; uploads/downloads, file lifecycle and image/PDF context pending |
 | Interactive terminals | Pending | Native PTY lifecycle, resize/input/output and replay; detached descendants must remain owned |
@@ -55,7 +55,7 @@ unsupported original SDK functions as available.
 | automations | Partial | Script/authorized-agent scheduling, timezones, run history, cancel and lifecycle; remote hosts, fresh worktrees, original retry policy and SQLite import pending |
 | connect | Partial | Authenticated local Core connection; original remote host connection workflow pending |
 | environment-project-checkout | Pending | Existing repositories, checkout ownership and project configuration |
-| environment-git-worktree | Pending | Create/reuse/remove worktrees, dirty state and branch lifecycle |
+| environment-git-worktree | Partial | HTC creates/preserves isolated detached worktrees; general worktree management, removal and branch lifecycle pending |
 | environment-personal-workspace | Partial | Managed local folders; original personal environment lifecycle pending |
 | custom-instructions | Available | Saved settings, enable/disable, immutable context snapshot for new Bee messages and agent automation runs |
 | plugin-api-tester | Pending | Original plugin API conformance tools |

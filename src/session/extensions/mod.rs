@@ -1,11 +1,13 @@
 //! Native plugin ports and desktop organization, served by the existing Core API.
 #[cfg(windows)]
-mod files;
+pub(in crate::session) mod files;
 mod library;
 mod plugins;
 mod runner;
 mod schedule;
 mod threads;
+#[cfg(windows)]
+mod traffic;
 use super::{Error, Manager, Result};
 use crate::platform::{DirBuilderExt, OpenOptionsExt};
 use axum::{
@@ -86,7 +88,9 @@ struct Data {
 }
 pub(crate) struct Extensions {
     #[cfg(windows)]
-    file_changes: Mutex<()>,
+    traffic: traffic::HiveTrafficCoordinator,
+    #[cfg(windows)]
+    file_changes: Arc<Mutex<()>>,
     root: PathBuf,
     data: Mutex<Data>,
     active: Mutex<BTreeMap<String, watch::Sender<bool>>>,
@@ -152,9 +156,13 @@ impl Extensions {
         #[cfg(windows)]
         files::recover(&root)?;
         save(&path, &data)?;
+        #[cfg(windows)]
+        let file_changes = Arc::new(Mutex::new(()));
         Ok(Self {
             #[cfg(windows)]
-            file_changes: Mutex::new(()),
+            traffic: traffic::HiveTrafficCoordinator::open(&root, file_changes.clone())?,
+            #[cfg(windows)]
+            file_changes,
             root,
             data: Mutex::new(data),
             active: Mutex::new(BTreeMap::new()),
@@ -199,6 +207,8 @@ impl Extensions {
             return;
         }
         plugins::start_power(manager);
+        #[cfg(windows)]
+        traffic::start_monitor(manager);
         let weak = Arc::downgrade(manager);
         tokio::spawn(async move {
             let mut clock = tokio::time::interval(std::time::Duration::from_secs(1));
@@ -263,7 +273,7 @@ pub(crate) fn routes() -> Router<Arc<Manager>> {
 }
 #[cfg(windows)]
 fn file_routes() -> Router<Arc<Manager>> {
-    files::routes()
+    files::routes().merge(traffic::routes())
 }
 #[cfg(not(windows))]
 fn file_routes() -> Router<Arc<Manager>> {

@@ -27,7 +27,7 @@ pub(super) fn routes() -> Router<Arc<Manager>> {
         .route("/v1/bee/files/{id}/history", get(edits::history))
         .route("/v1/bee/files/{id}/saves/{request}", get(edits::receipt))
 }
-fn relative(value: &str) -> Result<PathBuf> {
+pub(super) fn relative(value: &str) -> Result<PathBuf> {
     if value.len() > 4096 {
         return Err(invalid("file path is too long"));
     }
@@ -58,6 +58,9 @@ fn relative(value: &str) -> Result<PathBuf> {
     Ok(PathBuf::from(normalized))
 }
 async fn root(manager: &Manager, id: &str) -> Result<PathBuf> {
+    if id.starts_with("council_") {
+        return manager.bee.council_workspace(id);
+    }
     if manager.bee.contains(id) {
         return Ok(manager.bee.workspace(id)?.path);
     }
@@ -68,7 +71,47 @@ async fn root(manager: &Manager, id: &str) -> Result<PathBuf> {
         .map(|w| w.path)
         .unwrap_or_else(|| manager.config.repository.clone()))
 }
-fn directory(root: &FsPath) -> Result<cap_std::fs::Dir> {
+pub(in crate::session) fn validate_root(root: &FsPath) -> Result<()> {
+    directory(root).map(|_| ())
+}
+
+pub(in crate::session) async fn council_action(
+    manager: Arc<Manager>,
+    id: String,
+    operation: &str,
+    path: &str,
+    mut body: Value,
+) -> Result<Value> {
+    let location = Location { path: path.into() };
+    let result = match operation {
+        "list" => list(State(manager), Path(id), Query(location)).await?.0,
+        "preview" | "inspect" => {
+            let value = preview(State(manager), Path(id), Query(location)).await?.0;
+            if operation == "preview" && value["text"].as_str().is_some_and(|s| s.len() > 64 * 1024)
+            {
+                return Err(invalid("Council reads are limited to 64 KiB per file"));
+            }
+            value
+        }
+        "save" => {
+            body["path"] = json!(path);
+            let input = serde_json::from_value(body).map_err(io::Error::other)?;
+            edits::save(State(manager), Path(id), Json(input)).await?.0
+        }
+        _ => return Err(invalid("unsupported Council file operation")),
+    };
+    Ok(result)
+}
+pub(super) async fn traffic_save(
+    manager: Arc<Manager>,
+    id: String,
+    body: Value,
+    permit: super::traffic::Permit,
+) -> Result<Value> {
+    let input = serde_json::from_value(body).map_err(io::Error::other)?;
+    edits::save_with_permit(manager, id, input, Some(permit)).await
+}
+pub(super) fn directory(root: &FsPath) -> Result<cap_std::fs::Dir> {
     let metadata =
         fs::symlink_metadata(root).map_err(|_| invalid("workspace directory is unavailable"))?;
     if !metadata.is_dir() || metadata.file_attributes() & 0x400 != 0 {

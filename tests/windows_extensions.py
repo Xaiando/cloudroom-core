@@ -14,6 +14,8 @@ from bee_fixture import ChatFixture
 from windows_native import until, ProcessHandle
 from library_fixture import exercise_library
 from files_fixture import exercise_files, prepare_file_recovery, verify_file_recovery
+from council_fixture import CouncilFixture, exercise_council
+from traffic_fixture import exercise_traffic, verify_traffic_restart
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,6 +24,7 @@ def main():
     assert sys.platform == 'win32'
     binary = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / 'target/debug/cloudroom.exe'
     provider = ChatFixture()
+    council_provider = CouncilFixture()
     try:
         with tempfile.TemporaryDirectory(prefix='cloud bee extensions ') as folder:
             root = Path(folder)
@@ -130,6 +133,8 @@ def main():
                 until(lambda: api('GET', path)['session']['receipts']['third']['state'] == 'completed', 'third Chat finished')
                 library_ids = exercise_library(api, plugin, provider, conv)
                 file_body, file_saved = exercise_files(api, conv, repo)
+                saved_council, restart_council = exercise_council(api, repo, council_provider, until)
+                hive_saved = exercise_traffic(api, root, until)
 
                 spec = definition("import os; from pathlib import Path; print('automation hello — ø'); print('token_present', 'CLOUDROOM_TOKEN' in os.environ); Path('count.txt').write_text('once')")
                 create('denied', spec, expected=409, authorize=False)
@@ -210,8 +215,18 @@ def main():
                 until(lambda: (repo / 'child.pid').exists(), 'crash descendant started')
                 descendant = ProcessHandle(int((repo / 'child.pid').read_text()))
                 prepare_file_recovery(root / 'state', repo)
+                api('POST', '/v1/bee/councils/' + restart_council + '/messages', dict(request_id='restart_hold', text='COUNCIL_HOLD', coordinate=True))
+                until(lambda: any(call['messages'][-1]['content'] == 'COUNCIL_HOLD' for call in council_provider.calls), 'Council provider request active at restart')
+                council_calls = len(council_provider.calls)
                 core.kill(); core.wait(timeout=10); descendant.wait()
                 core = start()
+                verify_traffic_restart(api, hive_saved, until)
+                restored = api('GET', '/v1/bee/councils/' + restart_council)['council']['rounds'][-1]
+                assert restored['state'] == 'unknown_after_restart'
+                assert api('POST', '/v1/bee/councils/' + restart_council + '/messages', dict(request_id='restart_hold', text='COUNCIL_HOLD', coordinate=True))['state'] == 'unknown_after_restart'
+                assert len(council_provider.calls) == council_calls, 'Council restart replayed a provider request'
+                assert api('GET', '/v1/bee/councils/' + saved_council)['rounds_total'] == 4
+                council_provider.release.set()
                 verify_file_recovery(api, conv, repo, file_body, file_saved)
                 for identity in library_ids:
                     assert api('GET', '/v1/bee/library/' + identity)['entry']['id'] == identity
@@ -226,13 +241,14 @@ def main():
                 assert not any(a['id'] == aid for a in api('GET', '/v1/bee/automations')['automations'])
                 assert len(detail(aid)['runs']) == 2, 'Delete removed run history'
                 assert token not in (root / 'core.log').read_text(errors='replace')
-                print('PASS: native plugin lifecycle/settings/power requests; instruction and scoped memory snapshots; Docs/Memory/Tasks revisions and retention; workspace previews/editing, revision conflicts, BOM/Unicode/body limits, busy handles, hard links, backup retention and restart recovery without replay; thread organization without interruption; scripts/agent automation; schedules/history; timeout/output bounds; descendant cancellation; authorization')
+                print('PASS: native plugin lifecycle/settings/power requests; instruction and scoped memory snapshots; Docs/Memory/Tasks revisions and retention; workspace previews/editing, revision conflicts, BOM/Unicode/body limits, busy handles, hard links, backup retention and restart recovery without replay; thread organization without interruption; scripts/agent automation; schedules/history; timeout/output bounds; descendant cancellation; authorization; four-provider coordinated Council; HTC real parallel Jobs/worktrees, conflict queue, reviewed integration, stale baseline rejection, Chat write denial and restart recovery')
             finally:
                 if core is not None and core.poll() is None:
                     core.kill(); core.wait(timeout=10)
                 log.close()
     finally:
         provider.close()
+        council_provider.close()
 
 
 if __name__ == '__main__':

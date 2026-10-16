@@ -14,6 +14,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from bee_fixture import ChatFixture
+from council_fixture import CouncilFixture, configure_council
+from traffic_fixture import prepare_project
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,6 +47,7 @@ def main():
         repository = root / 'repository'
         (home / '.codex').mkdir(parents=True)
         repository.mkdir()
+        prepare_project(root)
         wrapper = root / 'fixture.cmd'
         wrapper.write_text(f'@echo off\r\nset "CODEX_HOME=%CODEX_HOME:~4%"\r\n"{sys.executable}" -u "{ROOT / "tests/core_fixture.py"}" %*\r\n', encoding='utf-8')
         with socket.socket() as sock:
@@ -76,6 +79,15 @@ def main():
                 else:
                     raise AssertionError('Core did not start')
                 chat = ChatFixture()
+                council = CouncilFixture()
+                council.hold_tasks.set()
+                (repository / 'note.txt').write_text('Shared Council file — 蜂\n', encoding='utf-8')
+                def council_api(method, path, body):
+                    request = Request(f'http://127.0.0.1:{port}{path}', method=method,
+                                      headers={'Authorization': 'Bearer ' + config['CLOUDROOM_TOKEN'], 'Content-Type': 'application/json'}, data=json.dumps(body).encode())
+                    with urlopen(request, timeout=10) as response:
+                        return json.load(response)
+                configure_council(council_api, council)
                 for model in ('fixture', 'basic'):
                     request = Request(f'http://127.0.0.1:{port}/v1/bee/profiles', method='POST',
                                       headers={'Authorization': 'Bearer ' + config['CLOUDROOM_TOKEN'], 'Content-Type': 'application/json'},
@@ -87,6 +99,9 @@ def main():
                 dropped_library_read = []
                 dropped_library_write = []
                 file_saves = []
+                council_messages = []
+                hive_starts = []
+                hive_approvals = []
 
                 class Proxy(BaseHTTPRequestHandler):
                     protocol_version = 'HTTP/1.1'
@@ -106,6 +121,18 @@ def main():
 
                     def forward(self):
                         body = self.rfile.read(int(self.headers.get('Content-Length', 0)))
+                        if self.path in ('/v1/fixture/council/release', '/v1/fixture/council/hold'):
+                            if self.path.endswith('/release'):
+                                council.task_release.set()
+                            else:
+                                council.task_release.clear()
+                                council.hold_tasks.set()
+                            self.send_response(200)
+                            self.send_header('Content-Type', 'application/json')
+                            self.send_header('Content-Length', '2')
+                            self.end_headers()
+                            self.wfile.write(b'{}')
+                            return
                         request = Request(f'http://127.0.0.1:{port}{self.path}',
                                           data=body if self.command == 'POST' else None,
                                           method=self.command,
@@ -126,6 +153,21 @@ def main():
                                     (folder / 'preview.md').write_text('# Native preview\n\n**Markdown** with Unicode ø — 蜂.\n\n- [x] Keep our GUI\n- [ ] More parity\n\n| Feature | State |\n| --- | --- |\n| File previews | Native |\n\n```python\ndef hello():\n    print("Cloud Bee")\n```\n\n[Source](source.py#L2)\n', encoding='utf-8')
                                     (folder / 'source.py').write_text('def hello():\n    print("Cloud Bee")\n', encoding='utf-8')
                         request_trace.append((self.command, self.path, status))
+                        if self.command == 'POST' and (self.path == '/v1/bee/traffic/tasks' or self.path.endswith('/approve') and self.path.startswith('/v1/bee/traffic/tasks/')):
+                            calls = hive_starts if self.path == '/v1/bee/traffic/tasks' else hive_approvals
+                            calls.append(json.loads(body))
+                            if len(calls) == 1:
+                                self.close_connection = True
+                                self.connection.shutdown(socket.SHUT_RDWR)
+                                self.connection.close()
+                                return
+                        if self.command == 'POST' and self.path.startswith('/v1/bee/councils/') and self.path.endswith('/messages'):
+                            council_messages.append(json.loads(body))
+                            if len(council_messages) == 1:
+                                self.close_connection = True
+                                self.connection.shutdown(socket.SHUT_RDWR)
+                                self.connection.close()
+                                return
                         if self.command == 'POST' and self.path.startswith('/v1/bee/files/') and self.path.endswith('/save'):
                             file_saves.append(json.loads(body))
                             if len(file_saves) == 1:
@@ -173,6 +215,7 @@ def main():
                     proxy.shutdown()
                     proxy.server_close()
                     chat.close()
+                    council.close()
                 if output.is_dir():
                     for artifact in output.iterdir():
                         shutil.copy2(artifact, artifacts / artifact.name)
@@ -194,6 +237,11 @@ def main():
                 assert presentation['passed'] is True
                 editor = json.loads((output / 'editor-result.json').read_text())
                 assert editor['passed'] is True
+                council_report = json.loads((output / 'council-result.json').read_text())
+                assert council_report['passed'] is True
+                hive_report = json.loads((output / 'hive-result.json').read_text())
+                assert hive_report['passed'] and hive_starts[0] == hive_starts[1] and hive_approvals[0] == hive_approvals[1]
+                assert council_messages[0] == council_messages[1], 'Council retry changed the original message'
                 assert len(file_saves) >= 5 and file_saves[0] == file_saves[1], 'File retry changed the immutable payload'
                 assert dropped_library_read, 'The library did not exercise transport recovery for read requests'
                 assert dropped_library_write, 'The library did not exercise deliberate recovery of an unconfirmed save'
@@ -203,7 +251,7 @@ def main():
                 assert report['multi_model'] is True
                 assert len(others) == 2 and all(len(sent) == 1 for sent in others), 'Each model must receive the prompt exactly once'
                 assert others[0][0]['request_id'] != others[1][0]['request_id'] and others[0][0]['text'] == others[1][0]['text']
-                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'] + '; ' + library['checks'] + '; ' + organization['checks'] + '; ' + presentation['checks'] + '; ' + editor['checks'])
+                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'] + '; ' + library['checks'] + '; ' + organization['checks'] + '; ' + presentation['checks'] + '; ' + editor['checks'] + '; ' + council_report['checks'] + '; ' + hive_report['checks'])
                 print('Rendered UI:', artifacts)
             finally:
                 if server.poll() is None:

@@ -1,4 +1,7 @@
-//! Durable, tool-free conversations linked to separately authorized native execution.
+//! Durable conversations and separately authorized execution.
+#[cfg(windows)]
+mod council;
+mod transport;
 use super::{Error, Manager, Result};
 use crate::platform::{DirBuilderExt, OpenOptionsExt};
 use axum::{
@@ -60,6 +63,8 @@ pub(crate) struct Store {
     conversations: Mutex<BTreeMap<String, Conversation>>,
     profiles: Mutex<Vec<Profile>>,
     transitions: tokio::sync::Mutex<()>,
+    #[cfg(windows)]
+    councils: council::Store,
 }
 
 fn invalid(message: &'static str) -> Error {
@@ -148,7 +153,11 @@ impl Store {
             Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(e),
         };
+        #[cfg(windows)]
+        let councils = council::Store::open(&root)?;
         Ok(Self {
+            #[cfg(windows)]
+            councils,
             root,
             conversations: Mutex::new(conversations),
             profiles: Mutex::new(profiles),
@@ -192,6 +201,7 @@ impl Store {
 
 pub(crate) fn routes() -> Router<Arc<Manager>> {
     Router::new()
+        .merge(council_routes())
         .route("/v1/bee/capabilities", get(capabilities))
         .route("/v1/bee/profiles", post(configure))
         .route("/v1/bee/sessions", get(list).post(create))
@@ -199,6 +209,17 @@ pub(crate) fn routes() -> Router<Arc<Manager>> {
         .route("/v1/bee/sessions/{id}/events", get(events))
         .route("/v1/bee/sessions/{id}/mode", post(mode))
         .route("/v1/bee/sessions/{id}/{command}", post(command))
+}
+
+fn council_routes() -> Router<Arc<Manager>> {
+    #[cfg(windows)]
+    {
+        council::routes()
+    }
+    #[cfg(not(windows))]
+    {
+        Router::new()
+    }
 }
 
 async fn capabilities(State(manager): State<Arc<Manager>>) -> Json<Value> {
@@ -265,6 +286,8 @@ async fn capabilities(State(manager): State<Arc<Manager>>) -> Json<Value> {
     }
     core["harnesses"] = json!(harnesses);
     core["council"] = json!("broadcast_comparison");
+    core["coordinated_council"] = json!(cfg!(windows));
+    core["hive_traffic_control"] = json!({"available":cfg!(windows),"work_harnesses":if cfg!(windows){vec!["codex"]}else{vec![]},"integration":"single_existing_utf8_file","account_isolation":false});
     core["workspace_file_preview"] = json!(cfg!(windows));
     core["workspace_file_editing"] = json!(cfg!(windows));
     core["chat_note"] =
@@ -302,8 +325,19 @@ async fn configure(
             profile.endpoint == "https://api.x.ai/v1/chat/completions"
                 && !profile.api_key.is_empty()
         }
-        ("local", "local" | "qwen" | "codex") => {
-            (profile.harness != "codex"
+        ("anthropic", "claude") => {
+            !profile.api_key.is_empty()
+                && (profile.endpoint == "https://api.anthropic.com/v1/messages"
+                    || std::env::var("CLOUDROOM_UNPROTECTED_TEST_MODE").as_deref() == Ok("1")
+                        && url.scheme() == "http"
+                        && url.host_str().is_some_and(|h| {
+                            h.parse::<std::net::IpAddr>()
+                                .is_ok_and(|ip| ip.is_loopback())
+                        }))
+        }
+        ("dashscope", "qwen") => transport::qwen_endpoint(&url) && !profile.api_key.is_empty(),
+        ("local", "local" | "qwen" | "codex" | "grok" | "claude") => {
+            (!matches!(profile.harness.as_str(), "codex" | "grok" | "claude")
                 || std::env::var("CLOUDROOM_UNPROTECTED_TEST_MODE").as_deref() == Ok("1"))
                 && url.scheme() == "http"
                 && url.host_str().is_some_and(|h| {
@@ -798,7 +832,7 @@ async fn command(
 }
 
 async fn chat(manager: Arc<Manager>, id: String, request: String, profile: Profile) {
-    let result = async {
+    let result: Result<(String, Value)> = async {
         let c = manager.bee.read(&id)?;
         let mut messages = vec![];
         if let Some(handoff) = c.handoffs.last() {
@@ -820,59 +854,8 @@ async fn chat(manager: Arc<Manager>, id: String, request: String, profile: Profi
                 messages.push(json!({"role":"assistant","content":c.turns[turn].output}));
             }
         }
-        let client = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(90))
-            .build()
-            .map_err(|_| invalid("Chat transport unavailable"))?;
-        let mut call = client.post(&profile.endpoint).json(
-            &json!({"model":profile.model,"messages":messages,"tool_choice":"none","stream":false}),
-        );
-        if !profile.api_key.is_empty() {
-            call = call.bearer_auth(&profile.api_key);
-        }
-        let mut response = call.send().await.map_err(|_| {
-            invalid("Chat request outcome uncertain; inspect history before sending again")
-        })?;
-        if !response.status().is_success() {
-            return Err(invalid(
-                "Chat API rejected the request; check model and separate API credentials",
-            ));
-        }
-        let mut bytes = vec![];
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|_| invalid("Chat response interrupted"))?
-        {
-            if bytes.len() + chunk.len() > 2 * 1024 * 1024 {
-                return Err(invalid("Chat response too large"));
-            }
-            bytes.extend_from_slice(&chunk);
-        }
-        let body: Value =
-            serde_json::from_slice(&bytes).map_err(|_| invalid("invalid Chat response"))?;
-        let message = &body["choices"][0]["message"];
-        if message["tool_calls"]
-            .as_array()
-            .is_some_and(|calls| !calls.is_empty())
-            || !message["function_call"].is_null()
-        {
-            return Err(invalid(
-                "Chat provider attempted a tool call; nothing was executed",
-            ));
-        }
-        let output = message["content"]
-            .as_str()
-            .ok_or(invalid("Chat returned no text"))?;
-        let mut usage = json!({});
-        for field in ["prompt_tokens", "completion_tokens", "total_tokens"] {
-            if let Some(value) = body["usage"][field].as_u64() {
-                usage[field] = json!(value);
-            }
-        }
-        Ok((manager.bee.redact(output, &manager.config.token), usage))
+        let (output, usage) = transport::complete(&profile, &messages).await?;
+        Ok((manager.bee.redact(&output, &manager.config.token), usage))
     }
     .await;
     let _ = manager.bee.update(&id,|c| {

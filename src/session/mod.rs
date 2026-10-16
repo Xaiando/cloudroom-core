@@ -205,7 +205,8 @@ impl Session {
     }
 
     fn can_resume(&self) -> bool {
-        self.native_id.is_some()
+        !(cfg!(windows) && self.session_id.starts_with("cr_htc_"))
+            && self.native_id.is_some()
             && self.native_path.is_some()
             && self.close_request.is_none()
             && !matches!(
@@ -316,14 +317,16 @@ impl Manager {
                     None,
                 )?;
             }
-            if session.waiting_start().is_some() {
+            let hive_owned = cfg!(windows) && session.session_id.starts_with("cr_htc_");
+            if session.waiting_start().is_some() && !hive_owned {
                 continue;
             }
-            let eligible = session.can_resume()
-                || session.startup_error.as_deref() == Some("startup_timeout")
-                || (session.state == "resuming"
-                    && !session.has_dispatched
-                    && session.native_path.is_some());
+            let eligible = !hive_owned
+                && (session.can_resume()
+                    || session.startup_error.as_deref() == Some("startup_timeout")
+                    || (session.state == "resuming"
+                        && !session.has_dispatched
+                        && session.native_path.is_some()));
             for mut receipt in session.receipts.values().cloned() {
                 let terminal = matches!(
                     receipt.state.as_str(),
@@ -1064,6 +1067,7 @@ impl Manager {
             }
             let handle = session.handle.clone();
             let retry_startup = command == "resume"
+                && !(cfg!(windows) && id.starts_with("cr_htc_"))
                 && session.state == "process_lost"
                 && session.startup_error.is_some()
                 && session.current_request.is_none()

@@ -102,8 +102,9 @@ public partial class MainWindow
                 RestoreFileDraft(); RequireSavedFile();
                 fileSession = fromPreview ? fileSession : context.Length > 0 ? context : sessionId;
                 if (fileSession == null || client == null) throw new IOException("Select a conversation to open a workspace file.");
-                var state = (await client.Get(SessionPath(fileSession), lifetime.Token))["session"];
-                string root = Json.Text(state?["workspace"], "path");
+                string root;
+                if (fileSession.StartsWith("council_", StringComparison.Ordinal)) root = (await client.Get("/v1/bee/councils/" + fileSession, lifetime.Token))["council"]?["workspace"]?.GetValue<string>() ?? "";
+                else { var state = (await client.Get(SessionPath(fileSession), lifetime.Token))["session"]; root = Json.Text(state?["workspace"], "path"); }
                 string parent = fromPreview && previewPath.Contains('/') ? previewPath[..previewPath.LastIndexOf('/')] : "";
                 var location = ResolveFileLink(root, parent, link.Target);
                 FilePreviewDialog.Visibility = Visibility.Visible; FilePreviewError.Text = "";

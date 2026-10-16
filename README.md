@@ -8,7 +8,9 @@ The `windows-native` branch adds a native `cloudroom.exe` backend, a **Windows d
 
 This is a **single-user, localhost-only runtime**: agents share your Windows account. Terminals, other harnesses, command guards, sync, and Linux security isolation still need porting.
 
-**Cloud Bee** is our native Windows WPF application. It adds separate Chat/Work modes, reviewed context handoffs, durable conversations and a Council of AI comparison view. See the [Cloud Bee guide](docs/cloud-bee.md) for capabilities, API setup and limitations.
+**Cloud Bee** is our native Windows WPF application. It adds separate Chat/Work modes, reviewed context handoffs, durable conversations and a cross-provider Council with coordinated research and Hive Traffic Control for reviewed native Work. See the [Cloud Bee guide](docs/cloud-bee.md) for capabilities, API setup and limitations.
+
+See [Council and Hive Traffic Control](docs/hive-traffic-control.md) for model selectors, microtasks, isolated Git worktrees, resource leases, reviewed single-file integration and recovery. Native Codex is the first supported coding worker; Chat participants cannot modify files.
 
 Cloud Bee also includes [native Automations, Custom instructions, and Keep Awake](docs/native-extensions.md), with durable run history and plugin controls.
 

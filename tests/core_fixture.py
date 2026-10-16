@@ -98,6 +98,17 @@ def codex():
                 with Path(native + ".requests").open("a") as audit:
                     audit.write(params["clientUserMessageId"] + "\n")
                 text = params["input"][0]["text"]
+                if '[Cloud Bee isolated Work]' in text and 'HTC_FIXTURE_' in text:
+                    target = next(line[len('Target file: '):] for line in text.splitlines() if line.startswith('Target file: '))
+                    assert not Path(target).is_absolute() and '..' not in Path(target).parts
+                    if 'HTC_FIXTURE_NOCHANGE' not in text:
+                        Path(target).write_bytes(b'\x00bad' if 'HTC_FIXTURE_INVALID' in text else b'Native isolated proposal\n')
+                    if 'HTC_FIXTURE_GATE=' in text:
+                        gate = text.partition('HTC_FIXTURE_GATE=')[2].splitlines()[0]
+                        while not Path(gate).exists():
+                            time.sleep(.02)
+                    if 'HTC_FIXTURE_SLOW' in text:
+                        time.sleep(2)
                 if text == "crash":
                     Path("crash-ready").touch()
                     while not Path("release-crash").exists():

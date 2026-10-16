@@ -46,11 +46,27 @@ Closing the GUI leaves agents running. Stop Core with:
 
   .\install\windows.ps1 -Action Stop
 
-Use Chat connections to configure an OpenAI/xAI API key or a local compatible
-server. API billing is separate from consumer subscriptions. Chat is text-only;
-unsupported modes stay unavailable. Work initially supports Codex with a reviewed
-handoff and explicit workspace authorization. Council compares independent model
-answers and broadcasts to selected models; autonomous delegation is not included.
+Use Chat connections to configure OpenAI, xAI, Anthropic, Alibaba Qwen, or a local
+compatible server. API billing is separate from consumer subscriptions. Ordinary
+Chat is text-only; unsupported modes stay unavailable. Work supports native Codex
+with reviewed context and explicit workspace authorization.
+
+Council has GPT/Grok/Claude/Qwen model selectors, shared messages, dependency
+microtasks and live progress. Choose a local folder and shared access when creating
+one. API Chat participants may discuss/read approved files but cannot write them.
+Choose isolated Work access on a clean Git project, then Run isolated Work on a
+microtask. Native Codex workers run in separate detached Git worktrees. Git for
+Windows is required. Hive Traffic Control queues conflicting shared integration,
+shows resource ownership separately from task progress, and provides inspect,
+pause, cancel, retry, approve, reject and recovery controls. V1 integrates one
+existing tracked UTF-8 file up to 256 KiB per task, after revision checks and human
+review. Whole branches, new/deleted files, automatic project tests and additional
+native coding providers are pending. Unfinished worktrees are preserved.
+
+On restart, HTC ownership enters recovery and native workers are not replayed.
+Inspect disk/worktree/history before explicitly releasing recovery. Leases and
+worktrees coordinate Core-mediated writes; same-user native processes can bypass
+application locks. This is not OS account isolation.
 
 The sidebar includes Automations and Plugins. Schedule native PowerShell, Node or
 Python scripts, or target an authorized Work conversation. Local schedules require

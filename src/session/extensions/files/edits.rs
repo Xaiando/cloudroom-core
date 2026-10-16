@@ -108,6 +108,14 @@ pub(super) async fn save(
     Path(id): Path<String>,
     Json(input): Json<Save>,
 ) -> Result<Json<Value>> {
+    Ok(Json(save_with_permit(manager, id, input, None).await?))
+}
+pub(super) async fn save_with_permit(
+    manager: Arc<Manager>,
+    id: String,
+    input: Save,
+    permit: Option<super::super::traffic::Permit>,
+) -> Result<Value> {
     key(&input.request_id)?;
     if !input.authorize_write
         || input.text.len() as u64 > LIMIT
@@ -124,12 +132,13 @@ pub(super) async fn save(
     }
     let path = relative(&input.path)?;
     let root = root(&manager, &id).await?;
-    let result = tokio::task::spawn_blocking(move || save_file(&manager, id, root, path, input))
-        .await
-        .map_err(|_| {
-            invalid("file save worker stopped; inspect disk and saved receipts before retrying")
-        })??;
-    Ok(Json(result))
+    let result =
+        tokio::task::spawn_blocking(move || save_file(&manager, id, root, path, input, permit))
+            .await
+            .map_err(|_| {
+                invalid("file save worker stopped; inspect disk and saved receipts before retrying")
+            })??;
+    Ok(result)
 }
 fn save_file(
     manager: &Manager,
@@ -137,8 +146,13 @@ fn save_file(
     root: PathBuf,
     path: PathBuf,
     input: Save,
+    permit: Option<super::super::traffic::Permit>,
 ) -> Result<Value> {
     let _guard = manager.extensions.file_changes.lock().unwrap();
+    manager
+        .extensions
+        .traffic
+        .authorize_file_write(&root, &path, permit.as_ref())?;
     let payload_hash = revision(
         &serde_json::to_vec(&json!({"session":id,"input":input})).map_err(io::Error::other)?,
     );

@@ -19,6 +19,7 @@ public partial class MainWindow
     {
         SaveLibraryDraft();
         SaveFileDraft();
+        SaveCouncilDraft();
         if (client == null) return;
         if (sessionId != null) drafts[sessionId] = Composer.Text;
         var starts = new JsonArray();
@@ -73,6 +74,8 @@ public partial class MainWindow
             : mode == "chat" ? chat ? "CHAT · Text only. Tools and execution are disabled." : "CHAT unavailable · Configure a separate API or local model connection."
             : "WORK · Authorized workspace. Unsupported approval requests are denied. Windows account isolation is not provided.";
         BackgroundWork.Text = sessionId != null && mode == "chat" && workStates.TryGetValue(sessionId, out var state) && state.Length > 0 ? "Background Work: " + state.Replace('_', ' ') + " · use Interrupt to cancel an active turn" : "";
+        bool busy = Json.Text(current, "state") is "running" or "starting" or "starting_turn" or "compacting" or "resuming" || Json.Text(current, "work_state") is "running" or "starting_turn";
+        RuntimeProgress.IsIndeterminate = busy; RuntimeProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         if (sessionId == null || IsBee(sessionId))
             SendButton.IsEnabled = connected && !acting && (mode == "chat" ? chat : Json.Text(current, "state") is "idle" or "running" or "starting_turn" or "sleeping") && Json.Text(current, "state") != "closed";
         if (IsBee(sessionId) && mode == "chat")
@@ -140,6 +143,10 @@ public partial class MainWindow
 
     private void ShowChatSetup(object sender, RoutedEventArgs e)
     {
+        string harness = sessionId == null ? HarnessPicker.SelectedItem as string ?? "codex" : sessionHarnesses.GetValueOrDefault(sessionId, "codex");
+        string tag = harness == "claude" ? "anthropic" : harness == "qwen" ? "dashscope" : harness == "grok" ? "xai" : harness == "local" ? "local" : "openai";
+        foreach (var item in ProfileProvider.Items.OfType<ComboBoxItem>())
+            if (item.Tag as string == tag) { ProfileProvider.SelectedItem = item; break; }
         ProfileModel.Text = ModelPicker.SelectedItem as string ?? "";
         ChatSetupDialog.Visibility = Visibility.Visible;
     }
@@ -148,8 +155,8 @@ public partial class MainWindow
     {
         if (client == null) return;
         string provider = (ProfileProvider.SelectedItem as ComboBoxItem)?.Tag as string ?? "openai";
-        string harness = provider == "openai" ? "codex" : provider == "xai" ? "grok" : "local";
-        string endpoint = provider == "openai" ? "https://api.openai.com/v1/chat/completions" : provider == "xai" ? "https://api.x.ai/v1/chat/completions" : ProfileEndpoint.Text.Trim();
+        string harness = provider == "anthropic" ? "claude" : provider == "dashscope" ? "qwen" : provider == "openai" ? "codex" : provider == "xai" ? "grok" : "local";
+        string endpoint = provider == "anthropic" ? "https://api.anthropic.com/v1/messages" : provider == "openai" ? "https://api.openai.com/v1/chat/completions" : provider == "xai" ? "https://api.x.ai/v1/chat/completions" : ProfileEndpoint.Text.Trim();
         await client.Post("/v1/bee/profiles", new JsonObject { ["provider"] = provider, ["harness"] = harness, ["model"] = ProfileModel.Text.Trim(), ["endpoint"] = endpoint, ["api_key"] = ProfileKey.Password }, lifetime.Token);
         ProfileKey.Clear();
         ChatSetupDialog.Visibility = Visibility.Collapsed;
@@ -159,13 +166,12 @@ public partial class MainWindow
         if (sessionId == null) { HarnessPicker.SelectedItem = harness; ModelPicker.SelectedItem = ProfileModel.Text.Trim(); }
         else { SelectSession(sessionId); await Poll(); }
         UpdateModes();
+        if (CouncilWorkspacePanel.Visibility == Visibility.Visible) await OpenCouncilWorkspace();
     });
 
     private async void ShowCouncil(object sender, RoutedEventArgs e) => await Act(async () =>
     {
-        councilView = !councilView;
-        CouncilPanel.Visibility = councilView ? Visibility.Visible : Visibility.Collapsed;
-        if (councilView) await RefreshCouncil();
+        await OpenCouncilWorkspace();
     });
     private async Task RefreshCouncil()
     {
@@ -253,9 +259,7 @@ public partial class MainWindow
         if (modes[ids[1]] != "chat") throw new IOException("Switching tabs lost independent modes.");
         SelectSession(ids[0]); await Poll();
         if (modes[ids[0]] != "work") throw new IOException("Returning to a tab lost Work mode.");
-        councilView = true;
-        CouncilPanel.Visibility = Visibility.Visible;
-        await RefreshCouncil();
+        await OpenGroupComparison();
         HeaderSubtitle.Text = "Deterministic fixture workspace · native Windows";
         await Capture(Path.Combine(output, "cloud-bee-council.png"));
         await Connect();

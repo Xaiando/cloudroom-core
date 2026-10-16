@@ -16,7 +16,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\Cloudroom\install\wi
 Cloudroom launchers and private `%LOCALAPPDATA%\CloudroomCore` settings remain
 compatible; no history or credentials are moved during the rename.
 
-1. Open **Chat connections**. Choose OpenAI API, xAI API, or a local
+1. Open **Chat connections**. Choose OpenAI API, xAI API, Anthropic API, Alibaba Qwen API, or a local
    OpenAI-compatible server and an exact model ID. Local endpoints require a
    numeric loopback address, for example `http://127.0.0.1:11434/v1/chat/completions`.
    This does not install or start a local model server.
@@ -29,14 +29,17 @@ compatible; no history or credentials are moved during the rename.
 4. Send a task and inspect its transcript. Select **Chat** to review a result handoff
    without terminating background Work. **Interrupt** cancels its active turn.
    Model tabs retain their own modes. **Close** closes the conversation and its Work.
-5. **Council of AI** compares each selected model's latest response. **Send to all
-   models** broadcasts once per participant, using each participant's selected
-   mode and existing authorization. Untick it to message the selected model only.
-
-Council currently provides broadcast and comparison within a group of models
-from one harness. It does not implement autonomous delegation, voting, consensus,
-cost-based routing, or automatic cross-provider orchestration. A failed delivery
-reports its recipients; retry the unchanged message to reuse their original IDs.
+5. Open **Council** for a shared GPT/Grok/Claude/Qwen conversation. Enable models,
+   select their exact configured IDs, choose a folder/access level, and send one
+   message to all participants. Coordinate research microtasks and follow their
+   dependencies and progress in the right panel. The earlier comparison view is
+   retained for existing conversation groups.
+6. For coding, choose isolated Work access on a clean Git project, then **Run isolated
+   Work…** on a research microtask. Native Codex workers receive separate worktrees.
+   **Hive Traffic Control** queues shared integration, preserves interrupted work,
+   and requires review of one proposed file before acceptance. Chat participants
+   cannot write files. See [the Council/HTC guide](hive-traffic-control.md) for controls,
+   supported scope, concurrency guarantees and recovery.
 
 ## Capabilities and security
 
@@ -44,24 +47,26 @@ reports its recipients; retry the unchanged message to reuse their original IDs.
 | --- | --- | --- |
 | OpenAI model / Codex | Separate OpenAI API profile | Native Codex catalog models |
 | Grok | Separate xAI API profile | Unavailable |
-| Local compatible server / Qwen | Explicit local HTTP profile | Unavailable |
-| Claude / Anthropic | Not integrated into this native slice | Unavailable |
+| Local compatible server / Qwen | Local HTTP or Alibaba Model Studio API profile | Unavailable |
+| Claude / Anthropic | Separate Anthropic Messages API profile | Unavailable |
 
-OpenAI and xAI API credentials/billing are distinct from consumer subscriptions.
-Codex and Grok CLI logins are not extracted to make Chat calls. A profile is
+OpenAI, xAI, Anthropic, and Alibaba API credentials/billing are distinct from consumer subscriptions.
+Native CLI logins are not extracted to make Chat calls. A profile is
 configuration, not proof that a particular model/account is accepted by the API.
 There is no provider or model fallback. Native Grok/Qwen sessions from existing
 work remain accessible; starting a new legacy session requires the separate
 legacy authorization checkbox. Legacy sessions retain their original permissions
 and cannot be relabeled as tool-free Chat.
 
-Chat uses a dedicated HTTP adapter with **no tool dispatcher**, no supplied tools,
-and `tool_choice: none`. Tool-call responses are rejected, never executed. It
-cannot browse or perform research actions; it can discuss supplied information.
+Ordinary Chat uses a dedicated HTTP adapter with **no tool dispatcher** or supplied tools.
+OpenAI-compatible requests include `tool_choice: none`; unsupported provider tool-call
+content is rejected, never executed. Ordinary Chat
+discusses supplied information. The separate Council scheduler can list/read files
+under explicit shared-folder access; its Chat participants cannot write or run commands.
 OpenAI's [Chat API contract](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
 and xAI's [compatible API](https://docs.x.ai/developers/rest-api-reference/inference/chat-completions)
 are the transport references. Local server behavior depends on that server; Cloud
-Bee still has no executable tool path for its responses.
+Bee still denies native execution from its API Chat responses.
 
 Managed Work requests Codex `workspace-write` and `untrusted` approval policy,
 including recovery and rewind. Approval interactions unsupported by Core fail

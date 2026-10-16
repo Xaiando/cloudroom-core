@@ -247,6 +247,7 @@ public partial class MainWindow : Window
         string? id = sessionId;
         try
         {
+            if (CouncilWorkspacePanel.Visibility == Visibility.Visible) { await RefreshCouncilWorkspace(); SetConnection(true); return; }
             if (ExtensionsPane.Visibility == Visibility.Visible) { await RefreshExtensions(); SetConnection(true); return; }
             if (DateTime.UtcNow >= nextList) await RefreshSessions();
             if (id != null)
@@ -503,6 +504,7 @@ public partial class MainWindow : Window
         FolderButton.IsEnabled = !string.IsNullOrEmpty(folder) && Directory.Exists(folder);
         SendButton.Content = acting ? "Working…" : draftId != null ? "Retry send ↗" : "Send  ↗";
         UpdateModes();
+        UpdateCouncilControls();
     }
 
     private static string AgentName(string id) => id switch
@@ -693,6 +695,8 @@ public partial class MainWindow : Window
         await LibrarySmokeTest(output);
         await OrganizationSmokeTest(output);
         await PresentationSmokeTest(output);
+        await CouncilWorkspaceSmokeTest(output);
+        await HiveSmokeTest(output);
         await File.WriteAllTextAsync(Path.Combine(output, "result.json"), new JsonObject { ["passed"] = true, ["retried_lost_acceptance"] = retried, ["multi_model"] = true, ["session"] = id, ["messages"] = replay.Messages.Count, ["checks"] = "connection validation, project creation, prompt, live output, duplicate-free polling, pause/resume/close, history replay, lost-response retry, multi-model group with separate folders; Cloud Bee Chat/Work, Council, reconnect" }.ToJsonString());
     }
     private async Task WaitForState(Func<JsonNode?, bool> predicate)
