@@ -89,6 +89,12 @@ Recovery copies and unsaved drafts are retained privately. Interrupted in-place
 writes may require manually loading a recovery draft; restart never replays writes.
 Attachments, file creation/deletion and fuller editor integrations are pending.
 
+DeepSeek: in Chat connections choose OpenCode -> DeepSeek Flash Free (limited
+time), supply an OpenCode Console API key, then select DeepSeek in Chat or
+Council. The pinned free model never falls back to a paid one. The separate
+DeepSeek direct API option requires a DeepSeek key and is paid. Check current
+access/terms: https://opencode.ai/v2/docs/console/models/
+
 If a Codex app update removes the saved CLI path, the launcher rediscovers the
 installed executable while preserving other runtime settings.
 

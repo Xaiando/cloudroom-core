@@ -9,11 +9,17 @@ pub(super) async fn complete(profile: &Profile, messages: &[Value]) -> Result<(S
         .build()
         .map_err(|_| invalid("model transport unavailable"))?;
     let anthropic = profile.provider == "anthropic";
-    let body = if anthropic {
+    let mut body = if anthropic {
         json!({"model":profile.model,"messages":messages,"max_tokens":8192,"stream":false})
     } else {
         json!({"model":profile.model,"messages":messages,"tool_choice":"none","stream":false})
     };
+    if matches!(profile.provider.as_str(), "deepseek" | "opencode") {
+        // Council carries the final text between bounded protocol steps. Disable
+        // thinking rather than attempting to replay private reasoning fields.
+        body["thinking"] = json!({"type":"disabled"});
+        body["max_tokens"] = json!(8192);
+    }
     let mut call = client.post(&profile.endpoint).json(&body);
     if anthropic {
         call = call
@@ -27,6 +33,22 @@ pub(super) async fn complete(profile: &Profile, messages: &[Value]) -> Result<(S
         .await
         .map_err(|_| invalid("model request outcome uncertain"))?;
     if !response.status().is_success() {
+        if matches!(profile.provider.as_str(), "deepseek" | "opencode") {
+            return Err(invalid(match response.status().as_u16() {
+                429 => {
+                    "DeepSeek provider rate limit reached; retry later. No alternative model was called."
+                }
+                401 | 403 => {
+                    "DeepSeek connection denied; check the selected provider's API key and model access. No alternative model was called."
+                }
+                402 => {
+                    "DeepSeek provider requires account credit or access; check the selected provider account. No alternative model was called."
+                }
+                _ => {
+                    "DeepSeek model unavailable or request rejected; check provider access. No alternative model was called."
+                }
+            }));
+        }
         return Err(invalid(
             "model API rejected the request; check credentials and model access",
         ));
@@ -89,6 +111,19 @@ pub(super) async fn complete(profile: &Profile, messages: &[Value]) -> Result<(S
     }
 }
 
+pub(super) fn deepseek_endpoint(provider: &str, model: &str, endpoint: &str) -> bool {
+    match provider {
+        "deepseek" => endpoint == "https://api.deepseek.com/chat/completions",
+        // Pin the promotional model: never substitute a billed model if the
+        // free offer expires or this account cannot access it.
+        "opencode" => {
+            model == "deepseek-v4.1-flash-free"
+                && endpoint == "https://opencode.ai/inference/openai/v1/chat/completions"
+        }
+        _ => false,
+    }
+}
+
 pub(super) fn qwen_endpoint(url: &reqwest::Url) -> bool {
     if url.scheme() != "https"
         || url.port().is_some()
@@ -127,6 +162,32 @@ pub(super) fn qwen_endpoint(url: &reqwest::Url) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn deepseek_connections_cannot_cross_providers_or_fall_back_to_paid() {
+        let free = "https://opencode.ai/inference/openai/v1/chat/completions";
+        let direct = "https://api.deepseek.com/chat/completions";
+        assert!(deepseek_endpoint(
+            "opencode",
+            "deepseek-v4.1-flash-free",
+            free
+        ));
+        assert!(deepseek_endpoint("deepseek", "deepseek-flash", direct));
+        for endpoint in [
+            direct,
+            "http://opencode.ai/inference/openai/v1/chat/completions",
+            "https://opencode.ai.evil.invalid/inference/openai/v1/chat/completions",
+            "https://opencode.ai:8443/inference/openai/v1/chat/completions",
+            "https://opencode.ai/inference/openai/v1/chat/completions?key=leak",
+        ] {
+            assert!(!deepseek_endpoint(
+                "opencode",
+                "deepseek-v4.1-flash-free",
+                endpoint
+            ));
+        }
+        assert!(!deepseek_endpoint("opencode", "deepseek-v4.1-flash", free));
+        assert!(!deepseek_endpoint("deepseek", "deepseek-flash", free));
+    }
     #[test]
     fn qwen_hosts_are_exact_official_endpoints() {
         for endpoint in [

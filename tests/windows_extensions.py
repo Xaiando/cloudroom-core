@@ -241,7 +241,7 @@ def main():
                 assert not any(a['id'] == aid for a in api('GET', '/v1/bee/automations')['automations'])
                 assert len(detail(aid)['runs']) == 2, 'Delete removed run history'
                 assert token not in (root / 'core.log').read_text(errors='replace')
-                print('PASS: native plugin lifecycle/settings/power requests; instruction and scoped memory snapshots; Docs/Memory/Tasks revisions and retention; workspace previews/editing, revision conflicts, BOM/Unicode/body limits, busy handles, hard links, backup retention and restart recovery without replay; thread organization without interruption; scripts/agent automation; schedules/history; timeout/output bounds; descendant cancellation; authorization; four-provider coordinated Council; HTC real parallel Jobs/worktrees, conflict queue, reviewed integration, stale baseline rejection, Chat write denial and restart recovery')
+                print('PASS: native plugin lifecycle/settings/power requests; instruction and scoped memory snapshots; Docs/Memory/Tasks revisions and retention; workspace previews/editing, revision conflicts, BOM/Unicode/body limits, busy handles, hard links, backup retention and restart recovery without replay; thread organization without interruption; scripts/agent automation; schedules/history; timeout/output bounds; descendant cancellation; authorization; five-provider coordinated Council; HTC real parallel Jobs/worktrees, conflict queue, reviewed integration, stale baseline rejection, Chat write denial and restart recovery')
             finally:
                 if core is not None and core.poll() is None:
                     core.kill(); core.wait(timeout=10)

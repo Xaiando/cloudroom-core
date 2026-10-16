@@ -19,7 +19,16 @@ class ChatFixture:
                 assert body['tool_choice'] == 'none' and not body.get('tools'), body
                 assert all(message['role'] in ('user', 'assistant') for message in body['messages'])
                 owner.calls.append(body)
+                if body['model'] in ('deepseek-flash', 'deepseek-v4.1-flash-free'):
+                    assert body['thinking'] == {'type': 'disabled'} and body['max_tokens'] == 8192
+                    key = 'fixture-opencode-key' if body['model'].endswith('-free') else 'fixture-deepseek-key'
+                    assert self.headers['Authorization'] == 'Bearer ' + key
                 text = body['messages'][-1]['content']
+                if text.startswith('DEEPSEEK_LIMIT') or text.startswith('DEEPSEEK_UNAVAILABLE'):
+                    self.send_response(429 if text.startswith('DEEPSEEK_LIMIT') else 403)
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                    return
                 if 'CHAT_FIXTURE_WAIT' in text:
                     owner.release.wait(30)
                 message = {'content': 'bee hello: ' + text, 'role': 'assistant'}

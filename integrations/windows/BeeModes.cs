@@ -144,7 +144,7 @@ public partial class MainWindow
     private void ShowChatSetup(object sender, RoutedEventArgs e)
     {
         string harness = sessionId == null ? HarnessPicker.SelectedItem as string ?? "codex" : sessionHarnesses.GetValueOrDefault(sessionId, "codex");
-        string tag = harness == "claude" ? "anthropic" : harness == "qwen" ? "dashscope" : harness == "grok" ? "xai" : harness == "local" ? "local" : "openai";
+        string tag = harness == "deepseek" ? ((ModelPicker.SelectedItem as string)?.EndsWith("-free", StringComparison.Ordinal) == true ? "opencode" : "deepseek") : harness == "claude" ? "anthropic" : harness == "qwen" ? "dashscope" : harness == "grok" ? "xai" : harness == "local" ? "local" : "openai";
         foreach (var item in ProfileProvider.Items.OfType<ComboBoxItem>())
             if (item.Tag as string == tag) { ProfileProvider.SelectedItem = item; break; }
         ProfileModel.Text = ModelPicker.SelectedItem as string ?? "";
@@ -155,8 +155,8 @@ public partial class MainWindow
     {
         if (client == null) return;
         string provider = (ProfileProvider.SelectedItem as ComboBoxItem)?.Tag as string ?? "openai";
-        string harness = provider == "anthropic" ? "claude" : provider == "dashscope" ? "qwen" : provider == "openai" ? "codex" : provider == "xai" ? "grok" : "local";
-        string endpoint = provider == "anthropic" ? "https://api.anthropic.com/v1/messages" : provider == "openai" ? "https://api.openai.com/v1/chat/completions" : provider == "xai" ? "https://api.x.ai/v1/chat/completions" : ProfileEndpoint.Text.Trim();
+        string harness = provider is "deepseek" or "opencode" ? "deepseek" : provider == "anthropic" ? "claude" : provider == "dashscope" ? "qwen" : provider == "openai" ? "codex" : provider == "xai" ? "grok" : "local";
+        string endpoint = provider == "opencode" ? "https://opencode.ai/inference/openai/v1/chat/completions" : provider == "deepseek" ? "https://api.deepseek.com/chat/completions" : provider == "anthropic" ? "https://api.anthropic.com/v1/messages" : provider == "openai" ? "https://api.openai.com/v1/chat/completions" : provider == "xai" ? "https://api.x.ai/v1/chat/completions" : ProfileEndpoint.Text.Trim();
         await client.Post("/v1/bee/profiles", new JsonObject { ["provider"] = provider, ["harness"] = harness, ["model"] = ProfileModel.Text.Trim(), ["endpoint"] = endpoint, ["api_key"] = ProfileKey.Password }, lifetime.Token);
         ProfileKey.Clear();
         ChatSetupDialog.Visibility = Visibility.Collapsed;

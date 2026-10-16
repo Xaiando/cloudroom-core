@@ -11,6 +11,7 @@ import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from bee_fixture import ChatFixture
+from deepseek_fixture import exercise_deepseek
 from windows_native import until
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,6 +98,8 @@ def main():
                     return state(sid)['receipts'].get(request, {}).get('state') in ('completed', 'failed', 'unknown_after_restart')
 
                 assert api('GET', '/v1/sessions')['total'] == 0, 'Chat room creation spawned an agent'
+                exercise_deepseek(api, chat, until)
+                chat.calls.clear()
                 prompt(lead, 'think', 'Discuss a project')
                 until(lambda: settled(lead, 'think'), 'Chat response')
                 prompt(lead, 'think', 'Discuss a project')
@@ -155,6 +158,7 @@ def main():
                 count = len(chat.calls)
                 core.kill(); core.wait(timeout=10)
                 core = start()
+                assert next(h for h in api('GET', '/v1/bee/capabilities')['harnesses'] if h['id'] == 'deepseek')['chat_models'] == ['deepseek-v4.1-flash-free', 'deepseek-flash']
                 assert state(lead)['mode'] == 'chat' and state(lead)['execution_session_id'] == native
                 assert state(peer)['receipts']['uncertain']['state'] == 'unknown_after_restart'
                 prompt(peer, 'uncertain', 'CHAT_FIXTURE_WAIT')

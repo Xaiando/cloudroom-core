@@ -203,7 +203,7 @@ pub(super) fn routes() -> Router<Arc<Manager>> {
 async fn catalog(State(manager): State<Arc<Manager>>) -> Json<Value> {
     let profiles = manager.bee.profiles.lock().unwrap();
     Json(
-        json!({"models":profiles.iter().map(|p|json!({"harness":p.harness,"model":p.model,"provider":p.provider})).collect::<Vec<_>>(),"access":["discuss","read","edit"],"max_members":4,"max_tasks":12,"max_steps":8}),
+        json!({"models":profiles.iter().map(|p|json!({"harness":p.harness,"model":p.model,"provider":p.provider})).collect::<Vec<_>>(),"access":["discuss","read","edit"],"max_members":5,"max_tasks":12,"max_steps":8}),
     )
 }
 async fn list(State(manager): State<Arc<Manager>>) -> Json<Value> {
@@ -277,10 +277,10 @@ async fn create(
         || input.title.is_empty()
         || input.title.len() > 160
         || input.members.is_empty()
-        || input.members.len() > 4
+        || input.members.len() > 5
     {
         return Err(invalid(
-            "choose 1–4 configured models and a Council title within 160 bytes",
+            "choose 1–5 configured models and a Council title within 160 bytes",
         ));
     }
     let id = format!("council_{}", input.request_id);
@@ -370,13 +370,13 @@ async fn message(
     }
     let members = input.members.unwrap_or_else(|| c.members.clone());
     if members.is_empty()
-        || members.len() > 4
+        || members.len() > 5
         || members
             .iter()
             .enumerate()
             .any(|(i, m)| members[..i].contains(m))
     {
-        return Err(invalid("enable 1–4 distinct Council models"));
+        return Err(invalid("enable 1–5 distinct Council models"));
     }
     let profiles = members
         .iter()

@@ -336,6 +336,21 @@ async fn configure(
                         }))
         }
         ("dashscope", "qwen") => transport::qwen_endpoint(&url) && !profile.api_key.is_empty(),
+        ("deepseek" | "opencode", "deepseek") => {
+            !profile.api_key.is_empty()
+                && (transport::deepseek_endpoint(
+                    &profile.provider,
+                    &profile.model,
+                    &profile.endpoint,
+                ) || std::env::var("CLOUDROOM_UNPROTECTED_TEST_MODE").as_deref() == Ok("1")
+                    && (profile.provider != "opencode"
+                        || profile.model == "deepseek-v4.1-flash-free")
+                    && url.scheme() == "http"
+                    && url.host_str().is_some_and(|h| {
+                        h.parse::<std::net::IpAddr>()
+                            .is_ok_and(|ip| ip.is_loopback())
+                    }))
+        }
         ("local", "local" | "qwen" | "codex" | "grok" | "claude") => {
             (!matches!(profile.harness.as_str(), "codex" | "grok" | "claude")
                 || std::env::var("CLOUDROOM_UNPROTECTED_TEST_MODE").as_deref() == Ok("1"))
@@ -858,9 +873,27 @@ async fn chat(manager: Arc<Manager>, id: String, request: String, profile: Profi
         Ok((manager.bee.redact(&output, &manager.config.token), usage))
     }
     .await;
-    let _ = manager.bee.update(&id,|c| {
-        let turn=c.turns.get_mut(&request).ok_or(Error::NotFound)?;
-        match result { Ok((output,usage)) => { turn.output=output; turn.usage=usage; turn.state="completed".into(); }, Err(_) => { turn.output="Chat failed or its outcome is uncertain. No tools were executed. Check the API profile and saved history before sending a new request.".into(); turn.state="failed".into(); } }
+    let failure = match &result {
+        Err(Error::Conflict(message))
+            if matches!(profile.provider.as_str(), "deepseek" | "opencode") =>
+        {
+            manager.bee.redact(message, &manager.config.token)
+        }
+        _ => "Chat failed or its outcome is uncertain. No tools were executed. Check the API profile and saved history before sending a new request.".into(),
+    };
+    let _ = manager.bee.update(&id, |c| {
+        let turn = c.turns.get_mut(&request).ok_or(Error::NotFound)?;
+        match result {
+            Ok((output, usage)) => {
+                turn.output = output;
+                turn.usage = usage;
+                turn.state = "completed".into();
+            }
+            Err(_) => {
+                turn.output = failure;
+                turn.state = "failed".into();
+            }
+        }
         Ok(())
     });
 }

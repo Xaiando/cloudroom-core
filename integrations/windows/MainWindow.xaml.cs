@@ -513,6 +513,7 @@ public partial class MainWindow : Window
         "opencode" => "OpenCode",
         "grok" => "Grok",
         "qwen" => "Qwen",
+        "deepseek" => "DeepSeek",
         "codex" => "Codex",
         _ => id.Length == 0 ? "Agent" : char.ToUpper(id[0]) + id[1..]
     };
