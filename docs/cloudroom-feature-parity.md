@@ -28,7 +28,7 @@ Cloud Bee, not to the separate original-desktop preview or Linux Core.
 | Full transcript search | Pending | Search indexed message and tool content with stable result navigation |
 | Projects and environments | Partial | Separate managed workspace folders; arbitrary existing project registration, Git checkout/worktree creation and environment lifecycle pending |
 | Conversation presentation | Partial | Native selectable Markdown, tables, lists, basic code coloring, heading/file links and tool output; richer media/diagram rendering pending |
-| Attachments and file work | Partial | Bounded native workspace browser and UTF-8 previews; editing, uploads/downloads and image/PDF context pending |
+| Attachments and file work | Partial | Native workspace browser, UTF-8 previews/editing, revision conflicts, comparison and recovery drafts; uploads/downloads, file lifecycle and image/PDF context pending |
 | Interactive terminals | Pending | Native PTY lifecycle, resize/input/output and replay; detached descendants must remain owned |
 | Agent controls | Partial | Queue/edit/cancel, interrupt/resume/close and managed permission policy; interaction UI, native subagent orchestration and broader CLI pending |
 | Provider and model selection | Partial | Native Codex models/reasoning and separate Chat API profiles; original provider families and account management pending |
@@ -60,7 +60,7 @@ unsupported original SDK functions as available.
 | custom-instructions | Available | Saved settings, enable/disable, immutable context snapshot for new Bee messages and agent automation runs |
 | plugin-api-tester | Pending | Original plugin API conformance tools |
 | inline-vis | Pending | Inline interactive visual artifacts with resource and navigation boundaries |
-| monaco-editor | Partial | Native read-only source previews and basic token coloring; editing, diff, save conflicts and original editor contributions pending |
+| monaco-editor | Partial | Native UTF-8 editing, basic token coloring, side-by-side comparison, revision-checked saves and recovery copies; language services, merge/diff engine and original editor contributions pending |
 | pdf-preview | Pending | Local PDF viewing and attachments |
 | provider-codex | Partial | Native app-server Work and model/reasoning selection; full original provider contribution and interactions pending |
 | provider-claude-code | Pending | Native runtime, login, streaming and permission integration |
@@ -75,7 +75,7 @@ unsupported original SDK functions as available.
 | provider-retry | Pending | Explicit provider retry/fallback policy with duplicate-execution protection |
 | push-notifications | Pending | Notification registration, delivery and user controls |
 | secrets | Pending | Windows protected credential store, explicit secret scopes and injection controls |
-| drafts | Partial | Durable conversation drafts and unsent library drafts; original cross-host/plugin draft integration pending |
+| drafts | Partial | Durable conversation, library and workspace file drafts with pending save recovery; original cross-host/plugin draft integration pending |
 | scheduled-send | Pending | Durable delayed messages, edit/cancel and restart without duplicate send |
 | side-chat | Pending | Side conversation lifecycle, context and parent navigation |
 | workflows | Pending | Original saved workflow definition, execution and recovery |
@@ -93,7 +93,7 @@ unsupported original SDK functions as available.
 2. Conversation and project work: Markdown, files/attachments, native terminal,
    existing repositories and Git worktrees. Preserve process ownership and file
    permissions through failures and restarts. Native Markdown, file links and
-   read-only UTF-8 previews are delivered; see [native-files.md](native-files.md).
+   UTF-8 previews, reviewed edits and file recovery are delivered; see [native-files.md](native-files.md).
 3. Agent integrations: interactive questions/approvals, Claude/Pi/ACP, native
    child agents and CLI parity, usage, secrets, provider retry and scheduled send.
 4. Remaining desktop plugins: side chats, workflows, notifications, inline

@@ -266,6 +266,7 @@ async fn capabilities(State(manager): State<Arc<Manager>>) -> Json<Value> {
     core["harnesses"] = json!(harnesses);
     core["council"] = json!("broadcast_comparison");
     core["workspace_file_preview"] = json!(cfg!(windows));
+    core["workspace_file_editing"] = json!(cfg!(windows));
     core["chat_note"] =
         json!("Chat requires its own API configuration; consumer subscriptions are separate.");
     Json(core)

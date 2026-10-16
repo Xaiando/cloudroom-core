@@ -18,6 +18,7 @@ public partial class MainWindow
     private void SaveOutbox()
     {
         SaveLibraryDraft();
+        SaveFileDraft();
         if (client == null) return;
         if (sessionId != null) drafts[sessionId] = Composer.Text;
         var starts = new JsonArray();

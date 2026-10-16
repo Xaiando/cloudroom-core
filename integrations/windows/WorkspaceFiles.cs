@@ -21,10 +21,19 @@ public partial class MainWindow
 
     private async void ShowWorkspaceFiles(object sender, RoutedEventArgs e) => await Act(async () =>
     {
+        RestoreFileDraft();
+        FilePreviewDialog.Visibility = Visibility.Visible;
+        if (FileDirty || pendingFileSave != null)
+        {
+            await ListWorkspaceFiles(previewPath.Contains('/') ? previewPath[..previewPath.LastIndexOf('/')] : "");
+            await RefreshFileHistory(); return;
+        }
         fileSession = sessionId ?? throw new IOException("Select a conversation first.");
         FilePreviewDialog.Visibility = Visibility.Visible; FilePreviewError.Text = "";
         previewText = previewPath = ""; FilePreview.CodeLanguage = ""; FilePreview.SourceText = "Select a UTF-8 text file to preview. Files stay inside this conversation's workspace.";
         FilePreviewTitle.Text = "Workspace files";
+        fileLoading = true; FileEditor.Text = ""; fileRevision = fileBaseline = ""; fileBom = fileBaselineBom = false; fileLoading = false;
+        FileEditor.Visibility = FileReviewPane.Visibility = Visibility.Collapsed; FilePreview.Visibility = Visibility.Visible; UpdateFileControls();
         await ListWorkspaceFiles("");
     });
     private string FilesPath(string action, string path) => "/v1/bee/files/" + fileSession + "/" + action + "?path=" + Uri.EscapeDataString(path);
@@ -57,12 +66,13 @@ public partial class MainWindow
     private async Task PreviewWorkspaceFile(string path, int line = 0)
     {
         if (client == null || fileSession == null) return;
+        RequireSavedFile();
         long version = ++fileVersion;
         var result = await client.Get(FilesPath("preview", path), lifetime.Token);
         if (version != fileVersion) return;
-        previewPath = Json.Text(result, "path"); previewText = Json.Text(result, "text");
-        FilePreviewTitle.Text = previewPath + " · " + Json.Number(result, "size") + " bytes · read only";
-        FilePreview.CodeLanguage = Json.Flag(result, "markdown") ? "" : Json.Text(result, "language", "text"); FilePreview.SourceText = previewText; FilePreview.RenderNow();
+        LoadEditor(result);
+        FileEditor.Visibility = FileReviewPane.Visibility = Visibility.Collapsed; FilePreview.Visibility = Visibility.Visible;
+        await RefreshFileHistory();
         FilePreviewError.Text = previewText.Length > 96000 ? "The rendered preview is limited to 96,000 characters. Copy source retains the complete downloaded text (up to 256 KiB)." : "";
         if (line > 0)
         {
@@ -71,8 +81,8 @@ public partial class MainWindow
     }
     private async void FileParent(object sender, RoutedEventArgs e) => await Act(() => ListWorkspaceFiles(fileDirectory.Contains('/') ? fileDirectory[..fileDirectory.LastIndexOf('/')] : ""));
     private async void RefreshWorkspaceFiles(object sender, RoutedEventArgs e) => await Act(() => ListWorkspaceFiles(fileDirectory));
-    private void DismissFilePreview(object sender, RoutedEventArgs e) { ++fileVersion; FilePreviewDialog.Visibility = Visibility.Collapsed; }
-    private async void CopyPreviewSource(object sender, RoutedEventArgs e) => await Act(() => { Clipboard.SetText(previewText); return Task.CompletedTask; });
+    private void DismissFilePreview(object sender, RoutedEventArgs e) { SaveFileDraft(); ++fileVersion; FilePreviewDialog.Visibility = Visibility.Collapsed; }
+    private async void CopyPreviewSource(object sender, RoutedEventArgs e) => await Act(() => { Clipboard.SetText(fileRevision.Length > 0 ? EditorText() : previewText); return Task.CompletedTask; });
     private async void CopyMessageSource(object sender, RoutedEventArgs e) => await Act(() => { Clipboard.SetText(((Button)sender).Tag as string ?? ""); return Task.CompletedTask; });
     private async void MarkdownLinkActivated(object sender, RoutedEventArgs e)
     {
@@ -89,6 +99,7 @@ public partial class MainWindow
                     Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }); return;
                 }
                 string context = (e.OriginalSource as MarkdownView)?.ContextSession ?? "";
+                RestoreFileDraft(); RequireSavedFile();
                 fileSession = fromPreview ? fileSession : context.Length > 0 ? context : sessionId;
                 if (fileSession == null || client == null) throw new IOException("Select a conversation to open a workspace file.");
                 var state = (await client.Get(SessionPath(fileSession), lifetime.Token))["session"];
@@ -156,6 +167,7 @@ public partial class MainWindow
         if (!new TextRange(FilePreview.Document.ContentStart, FilePreview.Document.ContentEnd).Text.Contains("print")) throw new IOException("Code preview lost source text.");
         await PreviewWorkspaceFile("source.py");
         await Capture(Path.Combine(output, "cloud-bee-files.png"));
+        await FileEditorSmokeTest(output);
         DismissFilePreview(this, new RoutedEventArgs());
         await File.WriteAllTextAsync(Path.Combine(output, "presentation-result.json"), new JsonObject { ["passed"] = true, ["checks"] = "native Markdown/table/code rendering, safe links, workspace file browser and previews" }.ToJsonString());
     }

@@ -86,6 +86,7 @@ def main():
                 request_trace = []
                 dropped_library_read = []
                 dropped_library_write = []
+                file_saves = []
 
                 class Proxy(BaseHTTPRequestHandler):
                     protocol_version = 'HTTP/1.1'
@@ -121,9 +122,17 @@ def main():
                             if workspace:
                                 folder = Path(workspace)
                                 folder.mkdir(parents=True, exist_ok=True)
-                                (folder / 'preview.md').write_text('# Native preview\n\n**Markdown** with Unicode ø — 蜂.\n\n- [x] Keep our GUI\n- [ ] More parity\n\n| Feature | State |\n| --- | --- |\n| File previews | Native |\n\n```python\ndef hello():\n    print("Cloud Bee")\n```\n\n[Source](source.py#L2)\n', encoding='utf-8')
-                                (folder / 'source.py').write_text('def hello():\n    print("Cloud Bee")\n', encoding='utf-8')
+                                if not (folder / 'preview.md').exists():
+                                    (folder / 'preview.md').write_text('# Native preview\n\n**Markdown** with Unicode ø — 蜂.\n\n- [x] Keep our GUI\n- [ ] More parity\n\n| Feature | State |\n| --- | --- |\n| File previews | Native |\n\n```python\ndef hello():\n    print("Cloud Bee")\n```\n\n[Source](source.py#L2)\n', encoding='utf-8')
+                                    (folder / 'source.py').write_text('def hello():\n    print("Cloud Bee")\n', encoding='utf-8')
                         request_trace.append((self.command, self.path, status))
+                        if self.command == 'POST' and self.path.startswith('/v1/bee/files/') and self.path.endswith('/save'):
+                            file_saves.append(json.loads(body))
+                            if len(file_saves) == 1:
+                                self.close_connection = True
+                                self.connection.shutdown(socket.SHUT_RDWR)
+                                self.connection.close()
+                                return
                         if self.path == '/v1/bee/library' and self.command == 'POST' and not dropped_library_write:
                             dropped_library_write.append(json.loads(body))
                             self.close_connection = True
@@ -183,6 +192,9 @@ def main():
                 assert organization['passed'] is True
                 presentation = json.loads((output / 'presentation-result.json').read_text())
                 assert presentation['passed'] is True
+                editor = json.loads((output / 'editor-result.json').read_text())
+                assert editor['passed'] is True
+                assert len(file_saves) >= 5 and file_saves[0] == file_saves[1], 'File retry changed the immutable payload'
                 assert dropped_library_read, 'The library did not exercise transport recovery for read requests'
                 assert dropped_library_write, 'The library did not exercise deliberate recovery of an unconfirmed save'
                 assert report['retried_lost_acceptance'] is True
@@ -191,7 +203,7 @@ def main():
                 assert report['multi_model'] is True
                 assert len(others) == 2 and all(len(sent) == 1 for sent in others), 'Each model must receive the prompt exactly once'
                 assert others[0][0]['request_id'] != others[1][0]['request_id'] and others[0][0]['text'] == others[1][0]['text']
-                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'] + '; ' + library['checks'] + '; ' + organization['checks'] + '; ' + presentation['checks'])
+                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'] + '; ' + library['checks'] + '; ' + organization['checks'] + '; ' + presentation['checks'] + '; ' + editor['checks'])
                 print('Rendered UI:', artifacts)
             finally:
                 if server.poll() is None:

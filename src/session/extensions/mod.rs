@@ -85,6 +85,8 @@ struct Data {
     plugins: BTreeMap<String, plugins::Plugin>,
 }
 pub(crate) struct Extensions {
+    #[cfg(windows)]
+    file_changes: Mutex<()>,
     root: PathBuf,
     data: Mutex<Data>,
     active: Mutex<BTreeMap<String, watch::Sender<bool>>>,
@@ -147,8 +149,12 @@ impl Extensions {
             }
         }
         plugins::initialize(&mut data);
+        #[cfg(windows)]
+        files::recover(&root)?;
         save(&path, &data)?;
         Ok(Self {
+            #[cfg(windows)]
+            file_changes: Mutex::new(()),
             root,
             data: Mutex::new(data),
             active: Mutex::new(BTreeMap::new()),

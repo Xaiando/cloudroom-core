@@ -19,7 +19,8 @@ collections, search and archive/restore. Full parity remains in progress; the
 original plugins and the remaining desktop workflows.
 
 [Native Markdown and workspace files](docs/native-files.md) add selectable rich
-conversations, basic code coloring, file links and bounded read-only text previews.
+conversations, basic code coloring, file links, bounded text editing, revision
+conflict checks, side-by-side comparison and private recovery copies.
 
 See the [Windows setup guide](docs/windows.md) and [desktop build guide](integrations/windows/README.md) for installation, supported features, limitations, and tests. Double-click `Start-Cloud-Bee.cmd` to launch, or run `install\create-shortcut.ps1` to add a desktop shortcut. The upstream Linux documentation follows below.
 

@@ -1,9 +1,15 @@
-//! Read-only, workspace-relative file access for native previews.
+//! Workspace-relative file previews and explicitly reviewed text edits.
+mod edits;
 use super::*;
 use axum::extract::Query;
 use std::{io::Read, os::windows::fs::MetadataExt, path::Path as FsPath};
 
 const LIMIT: u64 = 256 * 1024;
+pub(super) use edits::recover;
+fn revision(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    format!("{:x}", sha2::Sha256::digest(bytes))
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Location {
@@ -14,6 +20,12 @@ pub(super) fn routes() -> Router<Arc<Manager>> {
     Router::new()
         .route("/v1/bee/files/{id}/list", get(list))
         .route("/v1/bee/files/{id}/preview", get(preview))
+        .route(
+            "/v1/bee/files/{id}/save",
+            post(edits::save).layer(axum::extract::DefaultBodyLimit::max(2 * 1024 * 1024)),
+        )
+        .route("/v1/bee/files/{id}/history", get(edits::history))
+        .route("/v1/bee/files/{id}/saves/{request}", get(edits::receipt))
 }
 fn relative(value: &str) -> Result<PathBuf> {
     if value.len() > 4096 {
@@ -103,10 +115,13 @@ async fn preview(
         file.take(LIMIT+1).read_to_end(&mut bytes)?;
         if bytes.len() as u64 > LIMIT || bytes.contains(&0) { return Err(invalid("preview requires UTF-8 text no larger than 256 KiB")); }
         let size = bytes.len();
+        let revision = revision(&bytes);
+        let bom = bytes.starts_with(b"\xef\xbb\xbf");
         let text = String::from_utf8(bytes).map_err(|_| invalid("binary or non-UTF-8 preview is not supported"))?;
         let extension = path.extension().and_then(|p|p.to_str()).unwrap_or("").to_lowercase();
         let language = match extension.as_str() { "rs"=>"rust","cs"=>"csharp","py"=>"python","js"|"cjs"|"mjs"=>"javascript","ts"|"tsx"=>"typescript","ps1"=>"powershell","json"=>"json",_=>"text" };
-        Ok(json!({"path":location.path.replace('\\',"/"),"text":text.trim_start_matches('\u{feff}'),"size":size,"markdown":matches!(extension.as_str(),"md"|"markdown"),"language":language,"read_only":true}))
+        let newline = if text.contains("\r\n") && !text.replace("\r\n", "").contains(['\r', '\n']) { "crlf" } else { "lf" };
+        Ok(json!({"path":location.path.replace('\\',"/"),"text":text.strip_prefix('\u{feff}').unwrap_or(&text),"revision":revision,"bom":bom,"newline":newline,"size":size,"markdown":matches!(extension.as_str(),"md"|"markdown"),"language":language,"read_only":false}))
     }).await.map_err(|_| invalid("file preview worker stopped"))??;
     Ok(Json(result))
 }
