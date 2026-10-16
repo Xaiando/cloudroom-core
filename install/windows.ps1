@@ -240,6 +240,15 @@ if ($Action -eq 'Stop') {
 }
 if (!(Test-Path -LiteralPath $CoreBinary)) { throw 'Build Core first with cargo build --locked --release.' }
 if (Get-OwnedProcess) { throw 'Core is already running. Use -Action Status.' }
+if (!(Test-Path -LiteralPath ([string]$config.CLOUDROOM_CODEX_BINARY) -PathType Leaf)) {
+    $rediscoveredCodex = Find-CodexBinary
+    if (!$rediscoveredCodex) { throw 'The saved Codex executable is missing and no installed codex.exe was found. Configure Cloud Bee with -Action Configure -CodexBinary C:\path\codex.exe -Model MODEL_ID.' }
+    $config.CLOUDROOM_CODEX_BINARY = $rediscoveredCodex
+    $pendingConfig = $configPath + '.pending'
+    [System.IO.File]::WriteAllText($pendingConfig, ($config | ConvertTo-Json), [System.Text.UTF8Encoding]::new($false))
+    Move-Item -LiteralPath $pendingConfig -Destination $configPath -Force
+    Write-Output 'Rediscovered installed Codex executable. Existing runtime settings retained.'
+}
 $CoreBinary = (Resolve-Path -LiteralPath $CoreBinary).Path
 # Load settings only for the launched process, then restore this shell's environment.
 $previous = @{}

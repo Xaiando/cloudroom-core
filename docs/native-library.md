@@ -6,6 +6,10 @@ original official plugins. They keep our WPF GUI and use the existing Rust Core.
 They implement the subset described below; the full original feature checklist
 is [cloudroom-feature-parity.md](cloudroom-feature-parity.md).
 
+The launcher also repairs a missing saved Codex executable after a Codex app
+update by rediscovering the installed binary. It preserves the existing token,
+account home, model, workspace and history configuration.
+
 ## Private library
 
 Create an entry, choose an optional registered workspace, add comma-separated

@@ -61,14 +61,21 @@ def main():
             listener.bind(('127.0.0.1', 0))
             port = listener.getsockname()[1]
         data = configure('startup-runtime', npm, port)
+        saved = json.loads((data / 'core.json').read_text(encoding='utf-8'))
+        npm.unlink()
+        updated = local / 'OpenAI/Codex/bin/updated-version/codex.exe'
+        updated.parent.mkdir(parents=True)
+        shutil.copy2(sys.executable, updated)
         try:
             code, output = launch('Start', data, '-CoreBinary', core)
-            assert code == 0 and 'Core ready' in output, output
+            assert code == 0 and 'Core ready' in output and 'Rediscovered installed Codex' in output, output
+            repaired = json.loads((data / 'core.json').read_text(encoding='utf-8'))
+            assert repaired == {**saved, 'CLOUDROOM_CODEX_BINARY': str(updated)}, 'Rediscovery changed other runtime settings'
             code, output = launch('Api', data)
             assert code == 0 and 'True' in output, output
             # A second runtime cannot bind the first one's port. Its launch error
             # must include the actual Core error, while leaving the first running.
-            conflict = configure('conflict-runtime', npm, port)
+            conflict = configure('conflict-runtime', updated, port)
             code, output = launch('Start', conflict, '-CoreBinary', core)
             assert code != 0 and 'Core exited during startup.' in output and 'Log:' in output, output
             assert '10048' in output or 'address' in output.lower(), output
@@ -79,7 +86,7 @@ def main():
         finally:
             code, output = launch('Stop', data)
             assert code == 0, output
-        print('PASS: clean-shell Codex discovery, Core start/API/stop, and actionable port-conflict error; no Codex execution')
+        print('PASS: clean-shell Codex discovery, missing-version rediscovery preserving settings, Core start/API/stop, and actionable port-conflict error; no Codex execution')
 
 
 if __name__ == '__main__':

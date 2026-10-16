@@ -56,6 +56,16 @@ Python scripts, or target an authorized Work conversation. Local schedules requi
 Core running and Windows awake. Custom instructions and Keep Awake are native
 plugin ports; other original marketplace packages require individual Windows ports.
 
+Docs, Memory and Tasks are also bundled native ports. Open Docs / Memory / Tasks
+in the sidebar and install/enable the desired type. Documents support private text
+editing, revisions, search and archive/restore. Memories enter new messages only
+when selected for context. Tasks track status and prepare drafts for review.
+Organize selected saves conversation names, pins, collections and archive state.
+Full original Cloudroom parity is still in progress; see the source feature checklist.
+
+If a Codex app update removes the saved CLI path, the launcher rediscovers the
+installed executable while preserving other runtime settings.
+
 This is a single-user, localhost-only alpha. Windows account isolation is not
 provided. Managed Work requests workspace-write/untrusted approvals; unsupported
 approval requests are denied. Existing legacy sessions keep their original
