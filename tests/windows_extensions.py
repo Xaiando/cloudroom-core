@@ -90,8 +90,8 @@ def main():
             def action(aid, name, key, expected=200, **extra):
                 return api('POST', f'/v1/bee/automations/{aid}/{name}', dict(request_id=key, **extra), expected)
 
-            def finish(aid, run):
-                return until(lambda: next((r for r in detail(aid)['runs'] if r['id'] == run and r['state'] != 'running'), None), 'automation finished')
+            def finish(aid, run, timeout=30):
+                return until(lambda: next((r for r in detail(aid)['runs'] if r['id'] == run and r['state'] != 'running'), None), 'automation finished', timeout=timeout)
 
             try:
                 core = start()
@@ -140,8 +140,10 @@ def main():
                 assert len(detail(aid)['runs']) == 1
 
                 for interpreter, source in [('powershell', "Write-Output 'native PowerShell — ø'; exit 7"), ('node', "console.log('native Node');")]:
-                    other = create(interpreter, definition(source, interpreter))['id']
-                    row = finish(other, action(other, 'run', 'test')['run_id'])
+                    # Hosted Windows can take over 10 seconds to cold-start PowerShell 5.1.
+                    # The dedicated one-second timeout contract below remains unchanged.
+                    other = create(interpreter, definition(source, interpreter, timeout=60000))['id']
+                    row = finish(other, action(other, 'run', 'test')['run_id'], timeout=75)
                     assert row['exit_code'] == (7 if interpreter == 'powershell' else 0), (interpreter, row)
                     assert row['state'] == ('failed' if interpreter == 'powershell' else 'completed')
                     if interpreter == 'powershell':

@@ -49,6 +49,7 @@ public partial class MainWindow
         string scope = LibraryWorkspace.SelectedValue as string ?? "";
         var workspaces = new List<AutomationWorkspaceItem> { new("", "Global / unassigned"), new("legacy", "Default workspace") };
         workspaces.AddRange(Json.Array(libraryState, "workspaces").Select(w => new AutomationWorkspaceItem(Json.Text(w, "id"), Json.Text(w, "path"))));
+        if (scope.Length > 0 && !workspaces.Any(w => w.Id == scope)) workspaces.Add(new(scope, "Unavailable workspace · " + scope));
         LibraryWorkspace.ItemsSource = workspaces;
         LibraryWorkspace.SelectedValue = workspaces.Any(w => w.Id == scope) ? scope : "";
         libraryLoading = false;
@@ -103,7 +104,12 @@ public partial class MainWindow
         if (content != null) SelectTag(LibraryKind, Json.Text(content, "kind"));
         LibraryTitle.Text = Json.Text(content, "title"); LibraryBody.Text = Json.Text(content, "body");
         LibraryTags.Text = string.Join(", ", Json.Array(content, "tags").Select(t => t?.GetValue<string>() ?? ""));
-        LibraryWorkspace.SelectedValue = Json.Text(content, "workspace");
+        string workspace = Json.Text(content, "workspace");
+        if (workspace.Length > 0 && LibraryWorkspace.ItemsSource is List<AutomationWorkspaceItem> workspaces && !workspaces.Any(w => w.Id == workspace))
+        {
+            LibraryWorkspace.ItemsSource = workspaces.Append(new AutomationWorkspaceItem(workspace, "Unavailable workspace · " + workspace)).ToList();
+        }
+        LibraryWorkspace.SelectedValue = workspace;
         SelectTag(LibraryTaskStatus, Json.Text(content, "status", "todo")); SelectTag(LibraryMemoryKind, Json.Text(content, "memory_kind", "fact"));
         LibraryContext.IsChecked = Json.Flag(content, "use_in_context");
         LibraryHistory.ItemsSource = Json.Array(entry, "history").Select(h => new LibraryRevision("Revision " + Json.Number(h, "revision"), h!["content"]!.DeepClone())).Reverse().ToList();
@@ -271,6 +277,14 @@ public partial class MainWindow
             string id = libraryId!;
             LibraryBody.Text += "\nReviewed."; await SaveLibrary();
             if (LibraryHistory.Items.Count != 1) throw new IOException("Library revision was not retained.");
+            if (kind == "memory")
+            {
+                var original = (await client!.Get("/v1/bee/library/" + id, lifetime.Token))["entry"]!;
+                var unavailable = original.DeepClone(); unavailable["content"]!["workspace"] = "missing-fixture-scope";
+                LoadLibraryEntry(unavailable); await RefreshLibrary();
+                if (LibraryWorkspace.SelectedValue as string != "missing-fixture-scope") throw new IOException("Missing workspace silently became global memory.");
+                LoadLibraryEntry(original);
+            }
             LibrarySearch.Text = "NOT PRESENT";
             if (LibraryList.Items.Count != 0) throw new IOException("Library search did not filter.");
             LibrarySearch.Text = "";
