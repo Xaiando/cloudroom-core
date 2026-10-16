@@ -43,7 +43,7 @@ def main():
             code, output = launch('Configure', data, '-CodexHome', home, '-Model', 'fixture', '-Port', port)
             assert code == 0, output
             settings = json.loads((data / 'core.json').read_text(encoding='utf-8'))
-            assert Path(settings['CLOUDROOM_CODEX_BINARY']) == binary
+            assert Path(settings['CLOUDROOM_CODEX_BINARY']).samefile(binary), (settings['CLOUDROOM_CODEX_BINARY'], str(binary))
             assert len(settings['CLOUDROOM_TOKEN']) == 64
             return data
 
@@ -70,7 +70,8 @@ def main():
             code, output = launch('Start', data, '-CoreBinary', core)
             assert code == 0 and 'Core ready' in output and 'Rediscovered installed Codex' in output, output
             repaired = json.loads((data / 'core.json').read_text(encoding='utf-8'))
-            assert repaired == {**saved, 'CLOUDROOM_CODEX_BINARY': str(updated)}, 'Rediscovery changed other runtime settings'
+            assert Path(repaired['CLOUDROOM_CODEX_BINARY']).samefile(updated), (repaired['CLOUDROOM_CODEX_BINARY'], str(updated))
+            assert {k: v for k, v in repaired.items() if k != 'CLOUDROOM_CODEX_BINARY'} == {k: v for k, v in saved.items() if k != 'CLOUDROOM_CODEX_BINARY'}, 'Rediscovery changed other runtime settings'
             code, output = launch('Api', data)
             assert code == 0 and 'True' in output, output
             # A second runtime cannot bind the first one's port. Its launch error
