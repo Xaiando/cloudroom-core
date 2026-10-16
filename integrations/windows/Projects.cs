@@ -193,6 +193,7 @@ public partial class MainWindow
         OpenProjectSettings(project); ProjectArchived.IsChecked = false; await SaveProject();
         await Connect(); await OpenCouncilWorkspace(); await SelectCouncilThread(council);
         if (Json.Text(projects[project], "name") != "Cloud Bee workspace" || ThreadProject(ids[1]) != project) throw new IOException("Projects did not survive reconnect.");
+        UpdateLayout(); if (SessionList.ActualHeight < 100) throw new IOException("The project thread list needs room to show multiple chats.");
         await Capture(Path.Combine(output, "cloud-bee-projects.png"));
         await File.WriteAllTextAsync(Path.Combine(output, "projects-result.json"), new JsonObject { ["passed"] = true, ["checks"] = "project name/color/folder, multiple Chat and Council threads, independent drafts, sidebar project filtering, move, archive/restore and reconnect" }.ToJsonString());
     }
