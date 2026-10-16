@@ -1,10 +1,15 @@
 # Automations and Plugins in Cloud Bee
 
-Cloud Bee keeps its WPF GUI and ports three original Cloudroom features into
+Cloud Bee keeps its WPF GUI. Its first native ports bring three original Cloudroom features into
 the existing Rust Core: **Automations**, **Custom instructions**, and **Keep Awake**.
 Use the new sidebar buttons. These are native ports of the original features;
 the general TypeScript/React plugin SDK and original marketplace packages are
 not binary-compatible with this runtime.
+
+Additional native subsets of **Docs**, **Memory**, and **Tasks** are now available
+through the sidebar's library. See [native-library.md](native-library.md) for
+their workflows and limits, and [cloudroom-feature-parity.md](cloudroom-feature-parity.md)
+for the full original-function checklist.
 
 ## Automations
 

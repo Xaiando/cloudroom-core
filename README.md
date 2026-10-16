@@ -2,7 +2,7 @@
 
 ## Native Windows port (alpha)
 
-The [original desktop Windows preview](docs/windows-parity.md) now builds from our separate GUI fork and retains the original Plugins and Automations interface. Use `Start-Cloudroom-Preview.cmd` after setup. The WPF client below remains available as a fallback while feature parity is verified.
+The [original desktop Windows preview](docs/windows-parity.md) builds from our separate GUI fork and remains a reference application. **Cloud Bee is our primary native WPF GUI.** Use `Start-Cloud-Bee.cmd`; `Start-Cloudroom-Preview.cmd` opens the separate original preview.
 
 The `windows-native` branch adds a native `cloudroom.exe` backend, a **Windows desktop GUI**, and a PowerShell launcher. Codex sessions, live conversation output, model selection, project folders, saved history, restart recovery, and Job Object process cleanup are available.
 
@@ -11,6 +11,12 @@ This is a **single-user, localhost-only runtime**: agents share your Windows acc
 **Cloud Bee** is our native Windows WPF application. It adds separate Chat/Work modes, reviewed context handoffs, durable conversations and a Council of AI comparison view. See the [Cloud Bee guide](docs/cloud-bee.md) for capabilities, API setup and limitations.
 
 Cloud Bee also includes [native Automations, Custom instructions, and Keep Awake](docs/native-extensions.md), with durable run history and plugin controls.
+
+Native [Docs, Memory, Tasks and conversation organization](docs/native-library.md)
+add private content, scoped message context, task status, saved names, pins,
+collections, search and archive/restore. Full parity remains in progress; the
+[function checklist](docs/cloudroom-feature-parity.md) tracks all 35 bundled
+original plugins and the remaining desktop workflows.
 
 See the [Windows setup guide](docs/windows.md) and [desktop build guide](integrations/windows/README.md) for installation, supported features, limitations, and tests. Double-click `Start-Cloud-Bee.cmd` to launch, or run `install\create-shortcut.ps1` to add a desktop shortcut. The upstream Linux documentation follows below.
 

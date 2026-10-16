@@ -167,13 +167,21 @@ public partial class MainWindow : Window
     {
         if (client == null) return;
         var source = client;
+        long fetch = ++listVersion;
         var legacy = await source.Get("/v1/sessions", lifetime.Token);
         var managed = await source.Get("/v1/bee/sessions", lifetime.Token);
+        var organizationState = (await source.Get("/v1/bee/threads", lifetime.Token))["threads"] as JsonObject ?? new JsonObject();
         var linked = Json.Array(managed, "sessions").Select(s => Json.Text(s, "execution_session_id")).ToHashSet();
         var combined = new JsonArray();
         foreach (var item in Json.Array(managed, "sessions").Concat(Json.Array(legacy, "sessions").Where(s => !linked.Contains(Json.Text(s, "session_id"))))) combined.Add(item?.DeepClone());
         var result = new JsonObject { ["sessions"] = combined, ["total"] = (long)combined.Count };
-        if (!ReferenceEquals(client, source)) return;
+        if (!ReferenceEquals(client, source) || fetch != listVersion) return;
+        nativeOwners.Clear();
+        foreach (var session in Json.Array(managed, "sessions"))
+            if (Json.Text(session, "execution_session_id") is { Length: > 0 } native) nativeOwners[native] = Json.Text(session, "session_id");
+        foreach (var pair in threadOrganization)
+            if (Json.Text(pair.Value, "title").Length > 0 && Json.Text(organizationState[pair.Key], "title").Length == 0) titles.Remove(pair.Key);
+        threadOrganization = organizationState;
         var items = Json.Array(result, "sessions").Select(item =>
         {
             string id = Json.Text(item, "session_id");
@@ -185,14 +193,14 @@ public partial class MainWindow : Window
             string path = Json.Text(item?["workspace"], "path");
             string harness = Json.Text(item, "harness", "codex");
             sessionHarnesses[id] = harness;
-            return new SessionItem(id, titles.GetValueOrDefault(id, AgentName(harness) + " · " + id.Replace("cr_", "")[..Math.Min(10, id.Replace("cr_", "").Length)]), Json.Text(item, "state"), Json.Text(item, "model"), Path.GetFileName(path.TrimEnd('\\', '/')));
+            var organization = threadOrganization[id];
+            string savedTitle = Json.Text(organization, "title");
+            if (savedTitle.Length > 0) titles[id] = savedTitle;
+            return new SessionItem(id, (Json.Flag(organization, "pinned") ? "★ " : "") + titles.GetValueOrDefault(id, AgentName(harness) + " · " + id.Replace("cr_", "")[..Math.Min(10, id.Replace("cr_", "").Length)]), Json.Text(item, "state"), Json.Text(item, "model"), Path.GetFileName(path.TrimEnd('\\', '/')));
         }).ToList();
-        refreshingList = true;
-        SessionList.ItemsSource = items;
-        SessionList.SelectedItem = items.FirstOrDefault(i => i.Id == sessionId);
-        SessionCount.Text = Json.Number(result, "total").ToString();
-        refreshingList = false;
-        if (sessionId == null && items.Count > 0) SessionList.SelectedItem = items[0];
+        allSessionItems = items;
+        ApplyThreadFilter();
+        if (sessionId == null && SessionList.Items.Count > 0) SessionList.SelectedIndex = 0;
         foreach (var members in groupIds.Where(p => p.Value.Length > 0).GroupBy(p => p.Value))
         {
             var ids = members.Select(p => p.Key).OrderBy(id => id).ToList();
@@ -681,6 +689,8 @@ public partial class MainWindow : Window
         await Capture(Path.Combine(output, "multi-model.png"));
         await BeeSmokeTest(output);
         await ExtensionsSmokeTest(output);
+        await LibrarySmokeTest(output);
+        await OrganizationSmokeTest(output);
         await File.WriteAllTextAsync(Path.Combine(output, "result.json"), new JsonObject { ["passed"] = true, ["retried_lost_acceptance"] = retried, ["multi_model"] = true, ["session"] = id, ["messages"] = replay.Messages.Count, ["checks"] = "connection validation, project creation, prompt, live output, duplicate-free polling, pause/resume/close, history replay, lost-response retry, multi-model group with separate folders; Cloud Bee Chat/Work, Council, reconnect" }.ToJsonString());
     }
     private async Task WaitForState(Func<JsonNode?, bool> predicate)

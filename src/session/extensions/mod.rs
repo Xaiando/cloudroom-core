@@ -1,7 +1,9 @@
-//! Native ports of the original Automations, Custom instructions and Keep Awake plugins.
+//! Native plugin ports and desktop organization, served by the existing Core API.
+mod library;
 mod plugins;
 mod runner;
 mod schedule;
+mod threads;
 use super::{Error, Manager, Result};
 use crate::platform::{DirBuilderExt, OpenOptionsExt};
 use axum::{
@@ -71,6 +73,10 @@ pub(super) struct Run {
 }
 #[derive(Clone, Default, Serialize, Deserialize)]
 struct Data {
+    #[serde(default)]
+    threads: BTreeMap<String, threads::Organization>,
+    #[serde(default)]
+    library: BTreeMap<String, library::Entry>,
     automations: BTreeMap<String, Automation>,
     runs: BTreeMap<String, Run>,
     ledger: BTreeMap<String, (Value, Value)>,
@@ -156,14 +162,21 @@ impl Extensions {
         *data = next;
         Ok(result)
     }
-    pub(crate) fn instructions(&self) -> String {
+    pub(crate) fn instructions_for(&self, workspace: &crate::workspace::Workspace) -> String {
         let data = self.data.lock().unwrap();
-        data.plugins
+        let custom = data
+            .plugins
             .get("custom-instructions")
             .filter(|p| p.installed && p.enabled)
             .and_then(|p| p.settings["instructions"].as_str())
             .unwrap_or("")
-            .to_owned()
+            .to_owned();
+        let memory = library::context(&data, &workspace.path);
+        [custom, memory]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n")
     }
     fn enabled(&self, id: &str) -> bool {
         self.data
@@ -228,6 +241,11 @@ pub(crate) fn routes() -> Router<Arc<Manager>> {
         return Router::new();
     }
     Router::new()
+        .route("/v1/bee/threads", get(threads::list))
+        .route("/v1/bee/threads/{id}/organize", post(threads::write))
+        .route("/v1/bee/library", get(library::list).post(library::create))
+        .route("/v1/bee/library/{id}", get(library::detail))
+        .route("/v1/bee/library/{id}/{action}", post(library::action))
         .route("/v1/bee/automations", get(list).post(create))
         .route("/v1/bee/automations/{id}", get(detail))
         .route("/v1/bee/automations/{id}/{action}", post(action))
@@ -561,13 +579,20 @@ fn claim(manager: &Arc<Manager>, id: &str, request: String, trigger: &str) -> Re
                 _ => automation.definition.schedule.next(now())?,
             };
         }
-        let instructions = data
+        let automation = automation.clone();
+        let custom = data
             .plugins
             .get("custom-instructions")
             .filter(|p| p.installed && p.enabled)
             .and_then(|p| p.settings["instructions"].as_str())
             .unwrap_or("")
             .to_owned();
+        let memory = library::context(data, &automation.workspace.path);
+        let instructions = [custom, memory]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
         let run = Run {
             id: run_id.clone(),
             automation_id: id.into(),

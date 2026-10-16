@@ -95,6 +95,9 @@ fn save(path: &FsPath, value: &impl Serialize) -> io::Result<()> {
     )
 }
 impl Store {
+    pub(crate) fn contains(&self, id: &str) -> bool {
+        self.conversations.lock().unwrap().contains_key(id)
+    }
     pub(crate) fn automation_target(
         &self,
         id: &str,
@@ -697,7 +700,7 @@ async fn command(
                 return Err(invalid("prompt and handoff exceed 32768 bytes"));
             }
         }
-        let instructions = manager.extensions.instructions();
+        let instructions = manager.extensions.instructions_for(&c.workspace);
         if !instructions.trim().is_empty() && !text.trim_start().starts_with('/') {
             execution_input["text"] = json!(format!(
                 "{}\n\nCustom instructions:\n{}",

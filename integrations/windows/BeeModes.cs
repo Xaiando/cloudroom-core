@@ -17,6 +17,7 @@ public partial class MainWindow
     private string OutboxPath() => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ConfigPathBox.Text))!, "bee-desktop-" + client!.Identity + ".json");
     private void SaveOutbox()
     {
+        SaveLibraryDraft();
         if (client == null) return;
         if (sessionId != null) drafts[sessionId] = Composer.Text;
         var starts = new JsonArray();

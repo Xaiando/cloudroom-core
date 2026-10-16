@@ -58,6 +58,7 @@ public partial class MainWindow
         ConversationPane.Visibility = Visibility.Collapsed;
         AutomationsView.Visibility = plugins ? Visibility.Collapsed : Visibility.Visible;
         PluginsView.Visibility = plugins ? Visibility.Visible : Visibility.Collapsed;
+        LibraryView.Visibility = Visibility.Collapsed;
         ExtensionTitle.Text = plugins ? "Plugins" : "Automations";
         ExtensionSubtitle.Text = plugins ? "Original Cloudroom features, adapted for native Windows." : "Schedule scripts and authorized Work tasks. Core must be running and Windows awake.";
         ExtensionsError.Text = "";
@@ -75,6 +76,7 @@ public partial class MainWindow
 
     private async Task RefreshExtensions()
     {
+        if (LibraryView.Visibility == Visibility.Visible) return;
         if (client == null || DateTime.UtcNow < nextExtensions) return;
         var automations = await client.Get("/v1/bee/automations", lifetime.Token);
         string? selected = (AutomationList.SelectedItem as AutomationItem)?.Id;
@@ -343,7 +345,7 @@ public partial class MainWindow
         PluginList.SelectedItem = pluginItems.First(p => p.Id == "custom-instructions");
         selectedPlugin = null;
         ShowPluginSettings();
-        if (PluginList.Items.Count != 3 || !PluginInstructions.Text.Contains("Keep changes focused")) throw new IOException("Native plugins or settings did not render.");
+        if (PluginList.Items.Count != 6 || !PluginInstructions.Text.Contains("Keep changes focused")) throw new IOException("Native plugins or settings did not render.");
         await Capture(Path.Combine(output, "cloud-bee-plugins.png"));
         await PluginAction("custom-instructions", "disable");
         await PluginAction("keep-awake", "uninstall");

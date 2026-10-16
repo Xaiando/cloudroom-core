@@ -2,6 +2,10 @@
 
 The original Cloudroom desktop is the functional reference. Cloud Bee keeps our native WPF design as the primary Windows GUI and ports supported functions into Rust Core's API.
 
+The [full function checklist](cloudroom-feature-parity.md) tracks every bundled
+original plugin and the desktop workflows. Native parity remains incomplete;
+the checklist distinguishes exercised workflows from partial and pending ports.
+
 ## Source and architecture
 
 - Original desktop: https://github.com/davidondrej/cloudroom-gui

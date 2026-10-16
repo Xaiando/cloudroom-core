@@ -69,8 +69,16 @@ def main():
                         assert response.code == 200
                 prompt_requests = {}
                 request_trace = []
+                dropped_library_read = []
+                dropped_library_write = []
 
                 class Proxy(BaseHTTPRequestHandler):
+                    protocol_version = 'HTTP/1.1'
+                    def handle(self):
+                        try:
+                            super().handle()
+                        except ConnectionError:
+                            pass
                     def log_message(self, *_args):
                         pass
 
@@ -93,6 +101,18 @@ def main():
                         with response:
                             data, status = response.read(), response.code
                         request_trace.append((self.command, self.path, status))
+                        if self.path == '/v1/bee/library' and self.command == 'POST' and not dropped_library_write:
+                            dropped_library_write.append(json.loads(body))
+                            self.close_connection = True
+                            self.connection.shutdown(socket.SHUT_RDWR)
+                            self.connection.close()
+                            return
+                        if self.path == '/v1/bee/library' and self.command == 'GET' and not dropped_library_read:
+                            dropped_library_read.append(True)
+                            self.close_connection = True
+                            self.connection.shutdown(socket.SHUT_RDWR)
+                            self.connection.close()
+                            return
                         if self.path.endswith('/prompts') and self.command == 'POST':
                             sent = prompt_requests.setdefault(self.path, [])
                             sent.append(json.loads(body))
@@ -134,13 +154,19 @@ def main():
                 assert report['passed'] is True
                 extensions = json.loads((output / 'extensions-result.json').read_text())
                 assert extensions['passed'] is True
+                library = json.loads((output / 'library-result.json').read_text())
+                assert library['passed'] is True
+                organization = json.loads((output / 'organization-result.json').read_text())
+                assert organization['passed'] is True
+                assert dropped_library_read, 'The library did not exercise transport recovery for read requests'
+                assert dropped_library_write, 'The library did not exercise deliberate recovery of an unconfirmed save'
                 assert report['retried_lost_acceptance'] is True
                 first, *others = [sent for path, sent in prompt_requests.items() if not path.startswith('/v1/bee/')]
                 assert len(first) == 2 and first[0] == first[1], 'Retry changed the request ID or payload'
                 assert report['multi_model'] is True
                 assert len(others) == 2 and all(len(sent) == 1 for sent in others), 'Each model must receive the prompt exactly once'
                 assert others[0][0]['request_id'] != others[1][0]['request_id'] and others[0][0]['text'] == others[1][0]['text']
-                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'])
+                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'] + '; ' + library['checks'] + '; ' + organization['checks'])
                 print('Rendered UI:', artifacts)
             finally:
                 if server.poll() is None:

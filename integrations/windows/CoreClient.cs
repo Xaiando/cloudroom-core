@@ -34,7 +34,15 @@ public sealed class CoreClient : IDisposable
         return ("http://" + Json.Text(root, "CLOUDROOM_LISTEN"), Json.Text(root, "CLOUDROOM_TOKEN"));
     }
 
-    public async Task<JsonNode> Get(string path, CancellationToken ct = default) => await Request(HttpMethod.Get, path, null, ct);
+    public async Task<JsonNode> Get(string path, CancellationToken ct = default)
+    {
+        try { return await Request(HttpMethod.Get, path, null, ct); }
+        catch (HttpRequestException) when (!ct.IsCancellationRequested)
+        {
+            await Task.Delay(100, ct);
+            return await Request(HttpMethod.Get, path, null, ct);
+        }
+    }
     public async Task<JsonNode> Post(string path, JsonObject body, CancellationToken ct = default) => await Request(HttpMethod.Post, path, body, ct);
     private async Task<JsonNode> Request(HttpMethod method, string path, JsonObject? body, CancellationToken ct)
     {

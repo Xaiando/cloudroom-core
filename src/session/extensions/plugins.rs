@@ -8,6 +8,24 @@ pub(super) struct Plugin {
 }
 const CATALOG: &[(&str, &str, &str, &str)] = &[
     (
+        "simple-notes",
+        "Docs",
+        "Private Markdown documents with search, revisions, archive and import/export. Vault sync is pending.",
+        "bb-plugin-simple-notes",
+    ),
+    (
+        "memory",
+        "Memory",
+        "Global and workspace memories. Explicitly selected memories are snapshotted into new messages.",
+        "bb-plugin-memory",
+    ),
+    (
+        "tasks",
+        "Tasks",
+        "Workspace task lists with status, search and reviewed message preparation. Automatic delegation is pending.",
+        "bb-plugin-tasks",
+    ),
+    (
         "automations",
         "Automations",
         "Scheduled scripts and authorized agent tasks, with persisted run history.",
@@ -29,8 +47,8 @@ const CATALOG: &[(&str, &str, &str, &str)] = &[
 pub(super) fn initialize(data: &mut Data) {
     for (id, _, _, _) in CATALOG {
         data.plugins.entry((*id).into()).or_insert_with(|| Plugin {
-            installed: *id != "keep-awake",
-            enabled: *id != "keep-awake",
+            installed: matches!(*id, "automations" | "custom-instructions"),
+            enabled: matches!(*id, "automations" | "custom-instructions"),
             settings: if *id == "custom-instructions" {
                 json!({"instructions":""})
             } else {

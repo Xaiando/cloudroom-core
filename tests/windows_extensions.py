@@ -12,6 +12,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from bee_fixture import ChatFixture
 from windows_native import until, ProcessHandle
+from library_fixture import exercise_library
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -95,7 +96,7 @@ def main():
             try:
                 core = start()
                 api('GET', '/v1/bee/automations', expected=401, auth=False)
-                assert len(api('GET', '/v1/bee/plugins')['plugins']) == 3
+                assert len(api('GET', '/v1/bee/plugins')['plugins']) == 6
                 plugin('unknown', 'install', expected=409)
                 plugin('keep-awake', 'install')
                 until(lambda: next(p for p in api('GET', '/v1/bee/plugins')['plugins'] if p['id'] == 'keep-awake')['runtime_status'] == 'active', 'Windows power request active')
@@ -123,6 +124,8 @@ def main():
                 api('POST', path + '/prompts', dict(request_id='third', text='No extra instructions'))
                 until(lambda: len(provider.calls) == 3, 'third Chat started')
                 assert 'PLUGIN_SECOND' not in provider.calls[-1]['messages'][-1]['content']
+                until(lambda: api('GET', path)['session']['receipts']['third']['state'] == 'completed', 'third Chat finished')
+                library_ids = exercise_library(api, plugin, provider, conv)
 
                 spec = definition("import os; from pathlib import Path; print('automation hello — ø'); print('token_present', 'CLOUDROOM_TOKEN' in os.environ); Path('count.txt').write_text('once')")
                 create('denied', spec, expected=409, authorize=False)
@@ -139,7 +142,7 @@ def main():
                 for interpreter, source in [('powershell', "Write-Output 'native PowerShell — ø'; exit 7"), ('node', "console.log('native Node');")]:
                     other = create(interpreter, definition(source, interpreter))['id']
                     row = finish(other, action(other, 'run', 'test')['run_id'])
-                    assert row['exit_code'] == (7 if interpreter == 'powershell' else 0)
+                    assert row['exit_code'] == (7 if interpreter == 'powershell' else 0), (interpreter, row)
                     assert row['state'] == ('failed' if interpreter == 'powershell' else 'completed')
                     if interpreter == 'powershell':
                         assert 'native PowerShell — ø' in row['output']
@@ -185,6 +188,7 @@ def main():
                 calls = len(provider.calls)
                 agent_run = finish(agent_id, action(agent_id, 'run', 'agent_run')['run_id'])
                 assert agent_run['state'] == 'completed' and agent_run['native_session']
+                assert 'SAVED_MEMORY_SECOND' in agent_run['instructions'] and 'OTHER_PROJECT_MEMORY' not in agent_run['instructions']
                 assert len(provider.calls) == calls, 'Agent automation silently dispatched to Chat'
 
                 # Updating a definition retains history and requires the current revision.
@@ -201,6 +205,9 @@ def main():
                 descendant = ProcessHandle(int((repo / 'child.pid').read_text()))
                 core.kill(); core.wait(timeout=10); descendant.wait()
                 core = start()
+                for identity in library_ids:
+                    assert api('GET', '/v1/bee/library/' + identity)['entry']['id'] == identity
+                assert api('GET', '/v1/bee/threads')['threads'][conv]['title'] == 'Windows — 蜂'
                 assert next(r for r in detail(held)['runs'] if r['id'] == unknown)['state'] == 'unknown_after_restart'
                 assert action(held, 'run', 'crash')['run_id'] == unknown
                 assert len(detail(held)['runs']) == 2, 'Restart/retry replayed an uncertain run'
@@ -211,7 +218,7 @@ def main():
                 assert not any(a['id'] == aid for a in api('GET', '/v1/bee/automations')['automations'])
                 assert len(detail(aid)['runs']) == 2, 'Delete removed run history'
                 assert token not in (root / 'core.log').read_text(errors='replace')
-                print('PASS: native plugin lifecycle/settings/power requests; instruction snapshots; scripts/agent automation; schedules/history; timeout/output bounds; descendant cancellation; restart without replay; authorization and revision conflicts')
+                print('PASS: native plugin lifecycle/settings/power requests; instruction and scoped memory snapshots; Docs/Memory/Tasks revisions and retention; thread organization without interruption; scripts/agent automation; schedules/history; timeout/output bounds; descendant cancellation; restart without replay; authorization and revision conflicts')
             finally:
                 if core is not None and core.poll() is None:
                     core.kill(); core.wait(timeout=10)
