@@ -7,7 +7,7 @@ using Microsoft.Win32;
 
 namespace Cloudroom.Desktop;
 
-public sealed record CouncilModel(string Harness, string Model, string Provider) { public string Label => Model + (Provider == "opencode" ? " · OpenCode" : Provider == "deepseek" ? " · direct" : Harness == "local" ? " · local" : ""); }
+public sealed record CouncilModel(string Harness, string Model, string Provider) { public string Label => Model + (Provider.EndsWith("_cli", StringComparison.Ordinal) ? " · CLI login" : Provider == "opencode" ? " · OpenCode" : Provider == "deepseek" ? " · direct" : Harness == "local" ? " · local" : ""); }
 public sealed record CouncilSaved(string Id, string Title, string State) { public string Label => Title + " · " + State.Replace('_', ' '); }
 public sealed record CouncilTaskView(string Title, string Owner, string State, string Activity, string Result, string Operations, string Timing, bool Busy, double Progress, int Index, string RoundId, bool WorkAllowed);
 public partial class MainWindow
@@ -30,12 +30,12 @@ public partial class MainWindow
         councilLoading = true;
         foreach (var slot in CouncilSlots)
         {
-            string selected = (slot.Models.SelectedItem as CouncilModel)?.Model ?? "";
+            var selected = slot.Models.SelectedItem as CouncilModel;
             var models = Json.Array(councilCatalog, "models").Where(m => Json.Text(m, "harness") == slot.Harness || slot.Harness == "qwen" && Json.Text(m, "harness") == "local")
                 .Select(m => new CouncilModel(Json.Text(m, "harness"), Json.Text(m, "model"), Json.Text(m, "provider"))).ToList();
-            slot.Models.ItemsSource = models; slot.Models.SelectedItem = models.FirstOrDefault(m => m.Model == selected) ?? models.FirstOrDefault();
+            slot.Models.ItemsSource = models; slot.Models.SelectedItem = models.FirstOrDefault(m => m == selected) ?? models.FirstOrDefault();
             if (models.Count == 0) slot.Enable.IsChecked = false;
-            slot.Status.Text = models.Count == 0 ? "Add a Chat connection" : "Ready";
+            slot.Status.Text = models.Count == 0 ? Json.Text(councilCatalog?["setup"], slot.Harness, "Add a Chat connection") : "CLI / API models available";
         }
         councilLoading = false;
         RestoreCouncilDraft();
@@ -50,6 +50,7 @@ public partial class MainWindow
         councilView = true; CouncilPanel.Visibility = Visibility.Visible; await RefreshCouncil();
     }
     private void DismissGroupComparison(object sender, RoutedEventArgs e) { councilView = false; CouncilPanel.Visibility = Visibility.Collapsed; }
+    private async void RefreshCouncilModels(object sender, RoutedEventArgs e) => await Act(OpenCouncilWorkspace);
     private async void CouncilConnections(object sender, RoutedEventArgs e) { ShowChatSetup(sender, e); await Task.CompletedTask; }
     private void CouncilBrowseFolder(object sender, RoutedEventArgs e)
     {
@@ -93,8 +94,8 @@ public partial class MainWindow
     private JsonArray SelectedCouncilMembers()
     {
         var members = CouncilSlots.Where(s => s.Enable.IsChecked == true).Select(s => s.Models.SelectedItem as CouncilModel ?? throw new IOException("Choose a configured model.")).ToList();
-        if (members.Count == 0) throw new IOException("Enable at least one configured API model.");
-        return new JsonArray(members.Select(m => (JsonNode)new JsonObject { ["harness"] = m.Harness, ["model"] = m.Model }).ToArray());
+        if (members.Count == 0) throw new IOException("Enable at least one CLI or API model.");
+        return new JsonArray(members.Select(m => (JsonNode)new JsonObject { ["harness"] = m.Harness, ["model"] = m.Model, ["provider"] = m.Provider }).ToArray());
     }
     private static string CouncilTitle(string text)
     {
@@ -179,13 +180,13 @@ public partial class MainWindow
             foreach (var slot in CouncilSlots)
             {
                 var member = members.FirstOrDefault(m => Json.Text(m, "harness") == slot.Harness || slot.Harness == "qwen" && Json.Text(m, "harness") == "local");
-                if (!councilSelectionDirty) { slot.Enable.IsChecked = member != null; if (member != null) slot.Models.SelectedItem = slot.Models.Items.OfType<CouncilModel>().FirstOrDefault(m => m.Model == Json.Text(member, "model") && m.Harness == Json.Text(member, "harness")); }
-                if (slot.Enable.IsChecked != true || (slot.Models.SelectedItem as CouncilModel)?.Model != Json.Text(member, "model")) member = null;
+                if (!councilSelectionDirty) { slot.Enable.IsChecked = member != null; if (member != null) slot.Models.SelectedItem = slot.Models.Items.OfType<CouncilModel>().FirstOrDefault(m => m.Model == Json.Text(member, "model") && m.Harness == Json.Text(member, "harness") && (Json.Text(member, "provider").Length == 0 || m.Provider == Json.Text(member, "provider"))); }
+                if (slot.Enable.IsChecked != true || (slot.Models.SelectedItem as CouncilModel)?.Model != Json.Text(member, "model") || Json.Text(member, "provider").Length > 0 && (slot.Models.SelectedItem as CouncilModel)?.Provider != Json.Text(member, "provider")) member = null;
                 int memberIndex = member == null ? -1 : members.IndexOf(member);
                 var reply = Json.Array(last, "replies").FirstOrDefault(r => Json.Number(r, "member") == memberIndex);
                 var tasks = Json.Array(last, "tasks").Where(t => Json.Number(t, "owner") == memberIndex).ToList();
                 string modelState = tasks.Any(t => Json.Text(t, "state") == "running") ? "working" : tasks.Any(t => Json.Text(t, "state") == "queued") ? "queued" : Json.Text(tasks.LastOrDefault(), "state", state).Replace('_', ' ');
-                slot.Status.Text = member == null ? slot.Models.Items.Count == 0 ? "Add a Chat connection" : slot.Enable.IsChecked == true ? "Ready for next message" : "Disabled" : tasks.Count > 0 ? tasks.Count(t => Json.Text(t, "state") == "completed") + "/" + tasks.Count + " tasks · " + modelState : Json.Text(reply, "state", "ready").Replace('_', ' ');
+                slot.Status.Text = member == null ? slot.Models.Items.Count == 0 ? Json.Text(councilCatalog?["setup"], slot.Harness, "Add a Chat connection") : slot.Enable.IsChecked == true ? "Ready for next message" : "Disabled" : tasks.Count > 0 ? tasks.Count(t => Json.Text(t, "state") == "completed") + "/" + tasks.Count + " tasks · " + modelState : Json.Text(reply, "state", "ready").Replace('_', ' ');
             }
             councilLoading = false;
             var taskRows = Json.Array(last, "tasks"); int done = taskRows.Count(t => Json.Text(t, "state") == "completed");
@@ -230,7 +231,7 @@ public partial class MainWindow
         if (client == null || councilLoading || councilIdentity != client.Identity) return;
         if (councilId != null) councilDrafts[councilId] = CouncilComposer.Text;
         var drafts = new JsonObject(); foreach (var pair in councilDrafts) drafts[pair.Key] = pair.Value;
-        var slots = new JsonArray(CouncilSlots.Select(s => (JsonNode)new JsonObject { ["harness"] = (s.Models.SelectedItem as CouncilModel)?.Harness, ["model"] = (s.Models.SelectedItem as CouncilModel)?.Model, ["enabled"] = s.Enable.IsChecked == true }).ToArray());
+        var slots = new JsonArray(CouncilSlots.Select(s => (JsonNode)new JsonObject { ["harness"] = (s.Models.SelectedItem as CouncilModel)?.Harness, ["model"] = (s.Models.SelectedItem as CouncilModel)?.Model, ["provider"] = (s.Models.SelectedItem as CouncilModel)?.Provider, ["enabled"] = s.Enable.IsChecked == true }).ToArray());
         var saved = new JsonObject { ["selected"] = councilId, ["text"] = CouncilComposer.Text, ["drafts"] = drafts, ["slots"] = slots, ["selection_dirty"] = councilSelectionDirty, ["workspace"] = CouncilFolder.Text, ["access"] = ComboTag(CouncilAccess), ["coordinate"] = CouncilCoordinate.IsChecked == true, ["start"] = pendingCouncilStart?.DeepClone(), ["message"] = pendingCouncilMessage?.DeepClone(), ["hive_start"] = pendingHiveStart?.DeepClone(), ["hive_action"] = pendingHiveAction?.DeepClone(), ["hive_route"] = pendingHiveRoute, ["hive_start"] = pendingHiveStart?.DeepClone(), ["hive_action"] = pendingHiveAction?.DeepClone(), ["hive_route"] = pendingHiveRoute };
         string path = CouncilDraftPath(); File.WriteAllText(path + ".pending", saved.ToJsonString()); File.Move(path + ".pending", path, true);
     }
@@ -251,7 +252,7 @@ public partial class MainWindow
             CouncilComposer.Text = Json.Text(saved, "text"); CouncilFolder.Text = Json.Text(saved, "workspace"); SelectTag(CouncilAccess, Json.Text(saved, "access", "discuss")); CouncilCoordinate.IsChecked = Json.Flag(saved, "coordinate");
             if (saved?["drafts"] is JsonObject drafts) foreach (var pair in drafts) councilDrafts[pair.Key] = pair.Value?.GetValue<string>() ?? "";
             var slots = Json.Array(saved, "slots");
-            for (int i = 0; i < Math.Min(slots.Count, CouncilSlots.Length); i++) { var slot = CouncilSlots[i]; slot.Models.SelectedItem = slot.Models.Items.OfType<CouncilModel>().FirstOrDefault(m => m.Harness == Json.Text(slots[i], "harness") && m.Model == Json.Text(slots[i], "model")); slot.Enable.IsChecked = Json.Flag(slots[i], "enabled") && slot.Models.SelectedItem != null; }
+            for (int i = 0; i < Math.Min(slots.Count, CouncilSlots.Length); i++) { var slot = CouncilSlots[i]; slot.Models.SelectedItem = slot.Models.Items.OfType<CouncilModel>().FirstOrDefault(m => m.Harness == Json.Text(slots[i], "harness") && m.Model == Json.Text(slots[i], "model") && (Json.Text(slots[i], "provider").Length == 0 || m.Provider == Json.Text(slots[i], "provider"))); slot.Enable.IsChecked = Json.Flag(slots[i], "enabled") && slot.Models.SelectedItem != null; }
         }
         finally { councilLoading = false; }
     }

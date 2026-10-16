@@ -81,7 +81,13 @@ async fn call(
         return Err(invalid("Council model context limit reached"));
     }
     let (text, _) = tokio::select! {
-        result=transport::complete(profile,messages)=>result?,
+        result=async {
+            if profile.provider.ends_with("_cli") {
+                cli::complete(manager,profile,messages).await
+            } else {
+                transport::complete(profile,messages).await
+            }
+        }=>result?,
         _=cancel.changed()=>return Err(invalid("Council cancelled")),
     };
     if text.len() > 64 * 1024 {

@@ -1,6 +1,7 @@
 //! Persisted Council conversations, a bounded dependency scheduler and scoped file operations.
 use super::*;
 use tokio::sync::watch;
+mod cli;
 mod runner;
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -8,6 +9,8 @@ mod runner;
 struct Member {
     harness: String,
     model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    provider: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -201,10 +204,34 @@ pub(super) fn routes() -> Router<Arc<Manager>> {
         .route("/v1/bee/councils/{id}/cancel", post(cancel))
 }
 async fn catalog(State(manager): State<Arc<Manager>>) -> Json<Value> {
-    let profiles = manager.bee.profiles.lock().unwrap();
+    let mut profiles = cli::models(&manager);
+    profiles.extend(manager.bee.profiles.lock().unwrap().clone());
     Json(
-        json!({"models":profiles.iter().map(|p|json!({"harness":p.harness,"model":p.model,"provider":p.provider})).collect::<Vec<_>>(),"access":["discuss","read","edit"],"max_members":5,"max_tasks":12,"max_steps":8}),
+        json!({"models":profiles.iter().map(|p|json!({"harness":p.harness,"model":p.model,"provider":p.provider})).collect::<Vec<_>>(),"setup":{"codex":"Sign in with Codex CLI and refresh its model catalog", "grok":"Sign in with Grok CLI; hooks, plugins and MCP must be disabled", "claude":"Add a Claude API connection; Claude CLI Council support is pending", "qwen":"Add a Qwen API connection; Qwen CLI Council support is pending", "deepseek":"Add an OpenCode or DeepSeek API connection"},"access":["discuss","read","edit"],"max_members":5,"max_tasks":12,"max_steps":8}),
     )
+}
+fn profile(manager: &Manager, member: &Member) -> Option<Profile> {
+    if member
+        .provider
+        .as_deref()
+        .is_some_and(|p| p.ends_with("_cli"))
+    {
+        cli::models(manager).into_iter().find(|p| {
+            p.harness == member.harness
+                && p.model == member.model
+                && Some(&p.provider) == member.provider.as_ref()
+        })
+    } else {
+        manager
+            .bee
+            .profile(&member.harness, &member.model)
+            .filter(|p| {
+                member
+                    .provider
+                    .as_ref()
+                    .is_none_or(|provider| *provider == p.provider)
+            })
+    }
 }
 async fn list(State(manager): State<Arc<Manager>>) -> Json<Value> {
     let all = manager.bee.councils.all.lock().unwrap();
@@ -293,14 +320,9 @@ async fn create(
         return Ok(Json(json!({"council_id":id})));
     }
     for (i, member) in input.members.iter().enumerate() {
-        if input.members[..i].contains(member)
-            || manager
-                .bee
-                .profile(&member.harness, &member.model)
-                .is_none()
-        {
+        if input.members[..i].contains(member) || profile(&manager, member).is_none() {
             return Err(invalid(
-                "Council members must be distinct configured Chat API models",
+                "Council members must be distinct available CLI or API models",
             ));
         }
     }
@@ -380,12 +402,7 @@ async fn message(
     }
     let profiles = members
         .iter()
-        .map(|m| {
-            manager
-                .bee
-                .profile(&m.harness, &m.model)
-                .ok_or(invalid("a Council model connection is unavailable"))
-        })
+        .map(|m| profile(&manager, m).ok_or(invalid("a Council model connection is unavailable")))
         .collect::<Result<Vec<_>>>()?;
     let r = Round {
         members: members.clone(),

@@ -51,8 +51,12 @@ compatible server. API billing is separate from consumer subscriptions. Ordinary
 Chat is text-only; unsupported modes stay unavailable. Work supports native Codex
 with reviewed context and explicit workspace authorization.
 
-Council has GPT/Grok/Claude/Qwen model selectors, shared messages, dependency
-microtasks and live progress. Choose a local folder and shared access when creating
+Council has GPT/Grok/Claude/Qwen/DeepSeek model selectors, shared messages,
+dependency microtasks and live progress. GPT and Grok can use existing Codex/Grok
+CLI logins without API profiles. Other Council providers currently use API
+connections. Account access and limits apply. CLI text requests disable execution
+tools; Codex verifies its tool policy locally before sending. Grok custom hooks,
+MCP and plugins must be disabled. Choose a local folder and shared access when creating
 one. API Chat participants may discuss/read approved files but cannot write them.
 Choose isolated Work access on a clean Git project, then Run isolated Work on a
 microtask. Native Codex workers run in separate detached Git worktrees. Git for
