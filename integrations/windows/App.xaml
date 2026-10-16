@@ -8,6 +8,7 @@
     <SolidColorBrush x:Key="Accent" Color="#B5ACFF"/>
     <BooleanToVisibilityConverter x:Key="Visible"/>
     <Style TargetType="TextBlock"><Setter Property="FontSize" Value="13"/></Style>
+    <Style TargetType="Label"><Setter Property="Foreground" Value="{StaticResource Muted}"/></Style>
     <Style TargetType="Button">
       <Setter Property="Foreground" Value="{StaticResource Ink}"/><Setter Property="Background" Value="#232C3A"/>
       <Setter Property="BorderBrush" Value="{StaticResource Edge}"/><Setter Property="BorderThickness" Value="1"/>
