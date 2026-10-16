@@ -119,6 +119,4 @@ against real tools, and every Grok/Qwen behavior are not certified by these test
 ![Cloud Bee Chat fixture](images/cloud-bee-chat.png)
 ![Cloud Bee Council fixture](images/cloud-bee-council.png)
 
-Remaining original-app parity includes Plugins/Skills management, local
-Automations, richer project/worktree management, cloud coordination, interactive
-approvals and additional provider adapters. See [the parity checklist](windows-parity.md).
+The [native Automations and Plugins guide](native-extensions.md) covers the first three native plugin ports. Remaining parity includes additional plugins/Skills management, richer project/worktree management, cloud coordination, interactive approvals and additional provider adapters. See [the parity checklist](windows-parity.md).

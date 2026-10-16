@@ -61,7 +61,9 @@ public partial class MainWindow : Window
             if (smokeDirectory != null)
             {
                 Directory.CreateDirectory(smokeDirectory);
-                await File.WriteAllTextAsync(Path.Combine(smokeDirectory, "failure.txt"), SafeError(error));
+                string diagnostic = error.ToString();
+                if (TokenBox.Password.Length > 0) diagnostic = diagnostic.Replace(TokenBox.Password, "[redacted]", StringComparison.Ordinal);
+                await File.WriteAllTextAsync(Path.Combine(smokeDirectory, "failure.txt"), SafeError(error) + "\n" + diagnostic);
                 Application.Current.Shutdown(1);
                 return;
             }
@@ -236,6 +238,7 @@ public partial class MainWindow : Window
         string? id = sessionId;
         try
         {
+            if (ExtensionsPane.Visibility == Visibility.Visible) { await RefreshExtensions(); SetConnection(true); return; }
             if (DateTime.UtcNow >= nextList) await RefreshSessions();
             if (id != null)
             {
@@ -289,6 +292,8 @@ public partial class MainWindow : Window
 
     private void SelectSession(string id)
     {
+        ExtensionsPane.Visibility = Visibility.Collapsed;
+        ConversationPane.Visibility = Visibility.Visible;
         if (sessionId != null) drafts[sessionId] = Composer.Text;
         sessionId = id;
         refreshingList = true;
@@ -585,8 +590,8 @@ public partial class MainWindow : Window
         catch (Exception error) { ShowError(SafeError(error)); }
     }
     private void UpdateWelcome() { Welcome.Visibility = transcript.Messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed; ConversationList.Visibility = transcript.Messages.Count > 0 ? Visibility.Visible : Visibility.Collapsed; }
-    private void ShowError(string text) { ErrorText.Text = text; ErrorBanner.Visibility = Visibility.Visible; }
-    private void ClearError() { ErrorBanner.Visibility = Visibility.Collapsed; ErrorText.Text = ""; }
+    private void ShowError(string text) { ErrorText.Text = text; ErrorBanner.Visibility = Visibility.Visible; ExtensionsError.Text = text; if (AutomationEditor.Visibility == Visibility.Visible) AutomationEditorError.Text = text; }
+    private void ClearError() { ErrorBanner.Visibility = Visibility.Collapsed; ErrorText.Text = ""; ExtensionsError.Text = ""; AutomationEditorError.Text = ""; }
     private static string SafeError(Exception error) => error is TaskCanceledException ? "Core did not respond in time. Your draft is kept; retry it unchanged to reuse the request ID." : error is HttpRequestException ? "Cannot reach Core. Start the local runtime and check Connection settings. Your draft is kept." : error.Message;
     private static ScrollViewer? FindScroll(DependencyObject parent)
     {
@@ -675,6 +680,7 @@ public partial class MainWindow : Window
         if (folders.Count != 2 || folders.Any(f => f.Length == 0)) throw new IOException("Models in one chat shared a folder.");
         await Capture(Path.Combine(output, "multi-model.png"));
         await BeeSmokeTest(output);
+        await ExtensionsSmokeTest(output);
         await File.WriteAllTextAsync(Path.Combine(output, "result.json"), new JsonObject { ["passed"] = true, ["retried_lost_acceptance"] = retried, ["multi_model"] = true, ["session"] = id, ["messages"] = replay.Messages.Count, ["checks"] = "connection validation, project creation, prompt, live output, duplicate-free polling, pause/resume/close, history replay, lost-response retry, multi-model group with separate folders; Cloud Bee Chat/Work, Council, reconnect" }.ToJsonString());
     }
     private async Task WaitForState(Func<JsonNode?, bool> predicate)

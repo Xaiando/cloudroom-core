@@ -53,5 +53,4 @@ The original app builds and type-checks on Windows, and its Plugins and Automati
 The WPF application remains our primary native Windows GUI, now branded Cloud Bee.
 The [Cloud Bee implementation](cloud-bee.md) adds durable mode envelopes, separate
 text-only API Chat, authorized Codex Work, reviewed handoffs and Council broadcast /
-comparison. Original desktop Plugins, Skills and Automations are still outstanding
-native features; the original Electron preview remains a separate reference app.
+comparison. The first [native plugin ports](native-extensions.md) cover Automations, Custom instructions and Keep Awake. Additional plugins and Skills remain outstanding; the original Electron preview remains a separate reference app.

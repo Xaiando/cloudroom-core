@@ -7,6 +7,7 @@ mod accounts;
 pub mod automation;
 pub(crate) mod bee;
 mod catalog;
+pub(crate) mod extensions;
 mod guard;
 pub(crate) mod history;
 mod prompt;
@@ -286,6 +287,7 @@ pub struct Manager {
     pub(crate) mac: crate::mac::Mac,
     pub(crate) secrets: crate::secrets::Secrets,
     pub(crate) bee: bee::Store,
+    pub(crate) extensions: extensions::Extensions,
     codex_models: tokio::sync::Mutex<Option<(Instant, Vec<runtime::Model>)>>,
     claude_models: tokio::sync::Mutex<Option<(Instant, Vec<runtime::Model>)>>,
     cursor_models: tokio::sync::Mutex<Option<(Instant, Vec<runtime::Model>)>>,
@@ -408,6 +410,7 @@ impl Manager {
         });
         Ok(Arc::new(Self {
             bee: bee::Store::open(&config.state_dir)?,
+            extensions: extensions::Extensions::open(&config.state_dir)?,
             config,
             local,
             history,
@@ -2249,6 +2252,7 @@ impl Manager {
     }
 
     pub async fn shutdown(&self) {
+        self.extensions.stop();
         self.codex_auth.shutdown().await;
         self.claude_auth.shutdown().await;
         self.claude_login.shutdown().await;

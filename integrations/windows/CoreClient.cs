@@ -60,11 +60,16 @@ public sealed class CoreClient : IDisposable
         if (!response.IsSuccessStatusCode)
         {
             string detail = response.StatusCode == HttpStatusCode.Unauthorized ? "The Core token was rejected. Check Connection settings." : Json.Text(json, "error", "Core returned HTTP " + (int)response.StatusCode + ".");
-            throw new IOException(detail.Replace(token, "[redacted]", StringComparison.Ordinal));
+            throw new CoreApiException(detail.Replace(token, "[redacted]", StringComparison.Ordinal), (int)response.StatusCode);
         }
         return json ?? throw new IOException("Core returned an invalid JSON response.");
     }
     public void Dispose() => http.Dispose();
+}
+
+public sealed class CoreApiException(string message, int statusCode) : IOException(message)
+{
+    public int StatusCode { get; } = statusCode;
 }
 
 public static class Json

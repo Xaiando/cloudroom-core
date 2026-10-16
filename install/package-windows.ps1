@@ -51,6 +51,11 @@ unsupported modes stay unavailable. Work initially supports Codex with a reviewe
 handoff and explicit workspace authorization. Council compares independent model
 answers and broadcasts to selected models; autonomous delegation is not included.
 
+The sidebar includes Automations and Plugins. Schedule native PowerShell, Node or
+Python scripts, or target an authorized Work conversation. Local schedules require
+Core running and Windows awake. Custom instructions and Keep Awake are native
+plugin ports; other original marketplace packages require individual Windows ports.
+
 This is a single-user, localhost-only alpha. Windows account isolation is not
 provided. Managed Work requests workspace-write/untrusted approvals; unsupported
 approval requests are denied. Existing legacy sessions keep their original

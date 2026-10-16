@@ -68,6 +68,7 @@ def main():
                     with urlopen(request, timeout=10) as response:
                         assert response.code == 200
                 prompt_requests = {}
+                request_trace = []
 
                 class Proxy(BaseHTTPRequestHandler):
                     def log_message(self, *_args):
@@ -91,6 +92,7 @@ def main():
                             response = error
                         with response:
                             data, status = response.read(), response.code
+                        request_trace.append((self.command, self.path, status))
                         if self.path.endswith('/prompts') and self.command == 'POST':
                             sent = prompt_requests.setdefault(self.path, [])
                             sent.append(json.loads(body))
@@ -122,16 +124,23 @@ def main():
                 if output.is_dir():
                     for artifact in output.iterdir():
                         shutil.copy2(artifact, artifacts / artifact.name)
+                if result.returncode != 0:
+                    log.flush()
+                    shutil.copy2(root / 'core.log', artifacts / 'core-fixture-failure.log')
+                    (artifacts / 'request-fixture-failure.json').write_text(json.dumps(prompt_requests))
+                    (artifacts / 'trace-fixture-failure.json').write_text(json.dumps(request_trace))
                 assert result.returncode == 0, (output / 'failure.txt').read_text() if (output / 'failure.txt').exists() else f'GUI exited with {result.returncode}'
                 report = json.loads((output / 'result.json').read_text())
                 assert report['passed'] is True
+                extensions = json.loads((output / 'extensions-result.json').read_text())
+                assert extensions['passed'] is True
                 assert report['retried_lost_acceptance'] is True
                 first, *others = [sent for path, sent in prompt_requests.items() if not path.startswith('/v1/bee/')]
                 assert len(first) == 2 and first[0] == first[1], 'Retry changed the request ID or payload'
                 assert report['multi_model'] is True
                 assert len(others) == 2 and all(len(sent) == 1 for sent in others), 'Each model must receive the prompt exactly once'
                 assert others[0][0]['request_id'] != others[1][0]['request_id'] and others[0][0]['text'] == others[1][0]['text']
-                print('PASS: actual WPF window; ' + report['checks'])
+                print('PASS: actual WPF window; ' + report['checks'] + '; ' + extensions['checks'])
                 print('Rendered UI:', artifacts)
             finally:
                 if server.poll() is None:

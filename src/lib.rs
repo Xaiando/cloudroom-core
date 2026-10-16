@@ -105,6 +105,7 @@ pub async fn serve(mut config: config::Config) -> Result<(), Box<dyn std::error:
     manager.check_storage().await;
     // Reconcile previous workloads before the API or storage guard can start work.
     manager.restore_all().await?;
+    session::extensions::Extensions::start(&manager);
     manager.previews.listen().await?;
     if let Err(error) = mac::listen(&manager).await {
         eprintln!("Mac access unavailable: {error}");

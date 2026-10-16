@@ -95,6 +95,23 @@ fn save(path: &FsPath, value: &impl Serialize) -> io::Result<()> {
     )
 }
 impl Store {
+    pub(crate) fn automation_target(
+        &self,
+        id: &str,
+        require_work_view: bool,
+    ) -> Result<(String, crate::workspace::Workspace)> {
+        let c = self.read(id)?;
+        if c.closed || require_work_view && c.mode != "work" {
+            return Err(invalid(
+                "select an authorized Work conversation before creating an agent automation",
+            ));
+        }
+        Ok((
+            c.work
+                .ok_or(invalid("agent automation requires authorized Work"))?,
+            c.workspace,
+        ))
+    }
     pub(super) fn open(state: &FsPath) -> io::Result<Self> {
         let root = state.join("bee");
         fs::DirBuilder::new()
@@ -155,7 +172,7 @@ impl Store {
             .find(|p| p.harness == harness && p.model == model)
             .cloned()
     }
-    fn redact(&self, text: &str, token: &str) -> String {
+    pub(crate) fn redact(&self, text: &str, token: &str) -> String {
         let mut clean = text.replace(token, "[redacted]");
         for profile in self.profiles.lock().unwrap().iter() {
             if !profile.api_key.is_empty() {
@@ -680,6 +697,19 @@ async fn command(
                 return Err(invalid("prompt and handoff exceed 32768 bytes"));
             }
         }
+        let instructions = manager.extensions.instructions();
+        if !instructions.trim().is_empty() && !text.trim_start().starts_with('/') {
+            execution_input["text"] = json!(format!(
+                "{}\n\nCustom instructions:\n{}",
+                execution_input["text"].as_str().unwrap_or(text),
+                instructions
+            ));
+            if execution_input["text"].as_str().unwrap().len() > 32768 {
+                return Err(invalid(
+                    "message, handoff and custom instructions exceed 32768 bytes",
+                ));
+            }
+        }
         let fresh = manager.bee.update(&id, |next| {
             if let Some(prior) = next.turns.get(&request) {
                 if prior.input != input {
@@ -776,7 +806,7 @@ async fn chat(manager: Arc<Manager>, id: String, request: String, profile: Profi
             .collect();
         prior.reverse();
         for turn in prior {
-            messages.push(json!({"role":"user","content":c.turns[turn].input["text"]}));
+            messages.push(json!({"role":"user","content":c.turns[turn].execution_input["text"]}));
             if !c.turns[turn].output.is_empty() {
                 messages.push(json!({"role":"assistant","content":c.turns[turn].output}));
             }

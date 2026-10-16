@@ -40,6 +40,8 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python tests/windows_bee.py
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python tests/windows_extensions.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           python tests/windows_launcher.py
           exit $LASTEXITCODE
       - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
