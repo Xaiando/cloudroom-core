@@ -1,7 +1,7 @@
 # Native local runtime. Works in Windows PowerShell 5.1 and PowerShell 7.
 [CmdletBinding()]
 param(
-    [ValidateSet('Check', 'Configure', 'Run', 'Start', 'Status', 'Stop', 'Api', 'Gui')]
+    [ValidateSet('Check', 'Configure', 'Run', 'Start', 'Status', 'Stop', 'Api', 'Gui', 'Resolve')]
     [string]$Action = 'Check',
     [string]$DataDirectory = (Join-Path $env:LOCALAPPDATA 'CloudroomCore'),
     [string]$Repository,
@@ -73,7 +73,7 @@ function Find-QwenBinary {
     return $null
 }
 
-function Invoke-CoreApi($Config, $Verb, $Path, $JsonBody) {
+function Invoke-CoreApi($Config, $Verb, $Path, $JsonBody, $TimeoutSeconds = 15) {
     if (!$Path.StartsWith('/v1/') -or $Path.Contains('://')) { throw 'ApiPath must start with /v1/.' }
     $baseUri = [Uri]('http://' + $Config.CLOUDROOM_LISTEN)
     if (!$baseUri.IsLoopback -or $baseUri.UserInfo -or $baseUri.AbsolutePath -ne '/' -or $baseUri.Query -or $baseUri.Fragment) {
@@ -86,7 +86,7 @@ function Invoke-CoreApi($Config, $Verb, $Path, $JsonBody) {
     $handler.UseProxy = $false
     $handler.AllowAutoRedirect = $false
     $http = [System.Net.Http.HttpClient]::new($handler)
-    $http.Timeout = [TimeSpan]::FromSeconds(15)
+    $http.Timeout = [TimeSpan]::FromSeconds($TimeoutSeconds)
     $http.MaxResponseContentBufferSize = 32 * 1024 * 1024
     $request = $null
     $response = $null
@@ -123,6 +123,72 @@ function Get-StartupDetails($Config) {
     if (!$details) { $details = 'Core did not write an error message.' }
     return ($details + [Environment]::NewLine + 'Log: ' + $logPath)
 }
+
+function Get-PhysicalRuntimePath([string]$Path) {
+    if (!(Test-Path -LiteralPath $Path)) { return [IO.Path]::GetFullPath($Path) }
+    if (!('CloudBee.RuntimePaths' -as [type])) {
+        Add-Type @'
+using System;
+using System.IO;
+using System.Text;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+namespace CloudBee {
+public static class RuntimePaths {
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern SafeFileHandle CreateFile(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
+    public static string Resolve(string path) {
+        using (var handle = CreateFile(path, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
+            if (handle.IsInvalid) throw new IOException("Cannot resolve the runtime settings path.");
+            var buffer = new StringBuilder(32768);
+            uint length = GetFinalPathNameByHandle(handle, buffer, 32768, 0);
+            if (length == 0 || length >= 32768) throw new IOException("Cannot resolve the runtime settings path.");
+            string resolved = buffer.ToString();
+            if (resolved.StartsWith(@"\\?\UNC\")) return @"\\" + resolved.Substring(8);
+            return resolved.StartsWith(@"\\?\") ? resolved.Substring(4) : resolved;
+        }
+    }
+}}
+'@
+    }
+    [CloudBee.RuntimePaths]::Resolve($Path)
+}
+
+function Resolve-CoreSettingsPath {
+    $candidates = @($configPath)
+    # MSIX can redirect the same AppData string to a different physical file.
+    # Explicit data directories always win; discovery only applies to defaults.
+    if (!$script:PSBoundParameters.ContainsKey('DataDirectory')) {
+        $packages = Join-Path $env:LOCALAPPDATA 'Packages'
+        if (Test-Path -LiteralPath $packages) {
+            foreach ($package in @(Get-ChildItem -LiteralPath $packages -Directory -Filter 'OpenAI.Codex_*')) {
+                $candidates += Join-Path $package.FullName 'LocalCache\Local\CloudroomCore\core.json'
+            }
+        }
+    }
+    $existing = @()
+    foreach ($candidate in $candidates) {
+        if (!(Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+        $physical = Get-PhysicalRuntimePath $candidate
+        if ($existing -contains $physical) { continue }
+        $existing += $physical
+        try {
+            $candidateConfig = Get-Content -LiteralPath $physical -Raw | ConvertFrom-Json
+            if ((Invoke-CoreApi $candidateConfig 'GET' '/v1/ready' $null 2).ready) { return $physical }
+        } catch { }
+    }
+    if ($existing.Count -gt 0) { return $existing[0] }
+    return $configPath
+}
+
+if ($Action -notin @('Check', 'Configure')) {
+    $configPath = Resolve-CoreSettingsPath
+    $DataDirectory = Split-Path -Parent $configPath
+    $pidPath = Join-Path $DataDirectory 'process.json'
+}
+if ($Action -eq 'Resolve') { Write-Output $configPath; return }
 
 if ($Action -eq 'Gui') {
     if (!$DesktopBinary) {

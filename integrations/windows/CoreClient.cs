@@ -4,6 +4,8 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace Cloudroom.Desktop;
 
@@ -14,7 +16,7 @@ public sealed class CoreClient : IDisposable
     public Uri Endpoint { get; }
     public string Identity { get; }
 
-    public CoreClient(string endpoint, string token)
+    public CoreClient(string endpoint, string token, TimeSpan? timeout = null)
     {
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || !uri.IsLoopback ||
             uri.Scheme is not ("http" or "https") || uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0 || uri.AbsolutePath != "/")
@@ -24,14 +26,52 @@ public sealed class CoreClient : IDisposable
         Identity = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(uri.AbsoluteUri + "\n" + token)))[..16];
         this.token = token;
         // Never forward the local credential through a system proxy or a redirect.
-        http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false }) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(20) };
+        http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false }) { BaseAddress = uri, Timeout = timeout ?? TimeSpan.FromSeconds(20) };
         http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
     }
 
-    public static async Task<(string Endpoint, string Token)> ReadSettings(string path)
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
+
+    public static async Task<(string Endpoint, string Token, string Path)> ReadSettings(string path)
     {
-        var root = JsonNode.Parse(await File.ReadAllTextAsync(path)) ?? throw new IOException("Core settings are empty.");
-        return ("http://" + Json.Text(root, "CLOUDROOM_LISTEN"), Json.Text(root, "CLOUDROOM_TOKEN"));
+        using var file = File.OpenRead(path);
+        var buffer = new StringBuilder(32768);
+        uint length = GetFinalPathNameByHandle(file.SafeFileHandle, buffer, 32768, 0);
+        if (length == 0 || length >= 32768) throw new IOException("Cannot resolve the Core settings file.");
+        string physical = buffer.ToString();
+        physical = physical.StartsWith(@"\\?\UNC\", StringComparison.Ordinal) ? @"\\" + physical[8..] : physical.StartsWith(@"\\?\", StringComparison.Ordinal) ? physical[4..] : physical;
+        using var reader = new StreamReader(file, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        var root = JsonNode.Parse(await reader.ReadToEndAsync()) ?? throw new IOException("Core settings are empty.");
+        return ("http://" + Json.Text(root, "CLOUDROOM_LISTEN"), Json.Text(root, "CLOUDROOM_TOKEN"), physical);
+    }
+
+    public static async Task<string> FindDefaultSettings(string? localAppData = null, CancellationToken ct = default)
+    {
+        localAppData ??= Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string defaultPath = System.IO.Path.Combine(localAppData, "CloudroomCore", "core.json");
+        var candidates = new List<string> { defaultPath };
+        string packages = System.IO.Path.Combine(localAppData, "Packages");
+        if (Directory.Exists(packages))
+            candidates.AddRange(Directory.EnumerateDirectories(packages, "OpenAI.Codex_*").OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .Select(p => System.IO.Path.Combine(p, "LocalCache", "Local", "CloudroomCore", "core.json")));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        string? first = null;
+        foreach (string candidate in candidates)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!File.Exists(candidate)) continue;
+            try
+            {
+                var settings = await ReadSettings(candidate);
+                first ??= settings.Path;
+                if (!seen.Add(settings.Path)) continue;
+                using var probe = new CoreClient(settings.Endpoint, settings.Token, TimeSpan.FromSeconds(2));
+                if (Json.Flag(await probe.Request(HttpMethod.Get, "/v1/ready", null, ct), "ready")) return settings.Path;
+            }
+            catch (Exception error) when (!ct.IsCancellationRequested && error is IOException or HttpRequestException or ArgumentException or System.Text.Json.JsonException or TaskCanceledException) { }
+        }
+        return first ?? defaultPath;
     }
 
     public async Task<JsonNode> Get(string path, CancellationToken ct = default)

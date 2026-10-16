@@ -17,6 +17,11 @@ if ((Test-Path -LiteralPath $shortcutPath) -and $shortcut.TargetPath -ne $launch
     throw "A shortcut to another application already exists at $shortcutPath. Choose another DestinationDirectory."
 }
 $shortcut.TargetPath = $launcher
+$shortcut.Arguments = ''
+$settings = & (Join-Path $PSScriptRoot 'windows.ps1') -Action Resolve
+if ($settings -and (Test-Path -LiteralPath $settings -PathType Leaf)) {
+    $shortcut.Arguments = '-DataDirectory "' + (Split-Path -Parent $settings) + '"'
+}
 $shortcut.WorkingDirectory = $sourceRoot
 $shortcut.Description = 'Start Cloud Bee and its native Windows Core'
 $shortcut.WindowStyle = 1

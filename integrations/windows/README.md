@@ -34,6 +34,18 @@ the existing process, replace its credentials, or claim ownership of it.
 
 The GUI reads `%LOCALAPPDATA%\CloudroomCore\core.json` by default. Connection settings can load another settings file or accept a loopback address and token in memory. Tokens are never passed on the command line, saved by the GUI, or included in screenshots and test reports. The HTTP client disables redirects and proxies.
 
+MSIX applications such as Codex can redirect AppData to their package's
+`LocalCache\Local` folder. Default startup checks the ordinary location and the
+Codex cache for settings that authenticate with a running local Core. It passes
+the physical settings path to the GUI, and the desktop shortcut pins that data
+directory so launches from Explorer use the same credentials and saved state.
+An explicitly selected settings file/data directory is always honored.
+
+Open **Council of AI** in the sidebar to enable models and select their exact
+configured IDs. The five selectors cover GPT, Grok, Claude, Qwen/Local and
+DeepSeek. Providers without a Chat connection remain disabled; add credentials
+through **Chat connections**. See [the Cloud Bee guide](../../docs/cloud-bee.md).
+
 Create a session with the selected model and reasoning level, optionally in a new project folder. Send messages, watch live output, expand command output, browse saved sessions, pause/resume the queue, interrupt a running turn, close a session, or open its folder. Enter sends; Shift+Enter adds a line. Closing a session preserves history.
 
 To compare models, tick **Also run on** models in the new-session dialog. The app starts one session per model (each in its own `name-model` folder when you create a project folder; otherwise they share Core's workspace and can overwrite each other's files). Tabs above the conversation switch between them, and **Send to all models** delivers your message to every open session in the chat, each with its own request ID. Untick it to message only the selected tab. If one model fails to receive a message, retrying resends only to that model. Cloud Bee groups and modes persist in Core. Groups of legacy native sessions retain their earlier in-memory grouping behavior.

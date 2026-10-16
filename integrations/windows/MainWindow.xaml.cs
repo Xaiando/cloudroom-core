@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     // Pending prompt payloads by session ID, so a retry reuses each session's original request ID.
     private readonly Dictionary<string, JsonObject> pendingPrompts = [];
     private readonly string? smokeDirectory;
+    private readonly bool discoverSettings;
     private CoreClient? client;
     private JsonNode? capabilities, current;
     private string? sessionId, folder, draftId, draftText;
@@ -37,12 +38,13 @@ public partial class MainWindow : Window
     private long selectionVersion;
     private DateTime nextList = DateTime.MinValue;
 
-    public MainWindow(string configPath, string? smokeDirectory)
+    public MainWindow(string configPath, string? smokeDirectory, bool discoverSettings = false)
     {
         InitializeComponent();
         AddHandler(MarkdownView.LinkActivatedEvent, new RoutedEventHandler(MarkdownLinkActivated));
         ConfigPathBox.Text = configPath;
         this.smokeDirectory = smokeDirectory;
+        this.discoverSettings = discoverSettings;
         ConversationList.ItemsSource = transcript.Messages;
         transcript.Messages.CollectionChanged += (_, _) => UpdateWelcome();
         timer.Tick += async (_, _) => await Poll();
@@ -53,6 +55,7 @@ public partial class MainWindow : Window
     {
         try
         {
+            if (discoverSettings) ConfigPathBox.Text = await CoreClient.FindDefaultSettings(ct: lifetime.Token);
             await LoadLocalSettings();
             await Connect();
             if (smokeDirectory != null) { await SmokeTest(smokeDirectory); Application.Current.Shutdown(0); return; }
@@ -78,6 +81,7 @@ public partial class MainWindow : Window
     private async Task LoadLocalSettings()
     {
         var settings = await CoreClient.ReadSettings(ConfigPathBox.Text);
+        ConfigPathBox.Text = settings.Path;
         EndpointBox.Text = settings.Endpoint;
         TokenBox.Password = settings.Token;
     }
@@ -505,6 +509,7 @@ public partial class MainWindow : Window
         SendButton.Content = acting ? "Working…" : draftId != null ? "Retry send ↗" : "Send  ↗";
         UpdateModes();
         UpdateCouncilControls();
+        CouncilNavButton.IsEnabled = ready;
     }
 
     private static string AgentName(string id) => id switch
@@ -618,6 +623,7 @@ public partial class MainWindow : Window
 
     private async Task SmokeTest(string output)
     {
+        await ConnectionSettingsSmokeTest();
         if (client == null || !efforts.ContainsKey("fixture")) throw new IOException("Smoke tests require the deterministic fixture backend, never a real model.");
         Directory.CreateDirectory(output);
         foreach (string host in new[] { "https://example.com", "http://127.0.0.1:9840/path", "http://127.0.0.1:9840/?token=test" })

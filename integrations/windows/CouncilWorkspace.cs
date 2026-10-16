@@ -257,6 +257,7 @@ public partial class MainWindow
     }
     private async Task CouncilWorkspaceSmokeTest(string output)
     {
+        if (!CouncilNavButton.IsVisible || !CouncilNavButton.IsEnabled) throw new IOException("Council sidebar navigation is hidden or unavailable.");
         ShowChatSetup(this, new RoutedEventArgs());
         SelectTag(ProfileProvider, "opencode");
         if (ProfileModel.Text != "deepseek-v4.1-flash-free" || !ProfileModel.IsReadOnly || ProfileEndpoint.Text != "https://opencode.ai/inference/openai/v1/chat/completions" || !ProfileNotice.Text.Contains("OpenCode Console API key")) throw new IOException("Free DeepSeek connection preset is incorrect.");

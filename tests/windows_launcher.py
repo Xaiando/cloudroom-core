@@ -156,6 +156,24 @@ public sealed class LauncherPoisonProxy : IWebProxy {
             assert 'Core returned HTTP 401' in output and settings['CLOUDROOM_TOKEN'] not in output
             assert not (conflict / 'process.json').exists()
             assert record.read_bytes() == ownership
+            # Simulate an unpackaged desktop reading a stale default file while
+            # the authenticated Core settings live in Codex's MSIX cache.
+            default = local / 'CloudroomCore'
+            cached = local / 'Packages/OpenAI.Codex_fixture/LocalCache/Local/CloudroomCore'
+            default.mkdir(parents=True)
+            cached.mkdir(parents=True)
+            shutil.copy2(conflict / 'core.json', default / 'core.json')
+            shutil.copy2(data / 'core.json', cached / 'core.json')
+            output_file = root / 'default-resolve.txt'
+            with output_file.open('w', encoding='utf-8') as stream:
+                result = subprocess.run([str(powershell), '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                                         '-File', str(ROOT / 'install/windows.ps1'), '-Action', 'Resolve'],
+                                        env=env, stdin=subprocess.DEVNULL, stdout=stream, stderr=stream, timeout=20)
+            resolved = output_file.read_text(encoding='utf-8').strip()
+            assert result.returncode == 0 and Path(resolved).samefile(cached / 'core.json'), resolved
+            code, output = launch('Resolve', conflict)
+            assert code == 0 and Path(output.strip()).samefile(conflict / 'core.json'), 'Explicit settings were overridden'
+            assert json.loads((default / 'core.json').read_text(encoding='utf-8')) == settings, 'Discovery replaced a saved token'
             code, output = launch('Api', data)
             assert code == 0 and 'True' in output, output
         finally:
