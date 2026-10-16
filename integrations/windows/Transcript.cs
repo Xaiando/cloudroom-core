@@ -23,9 +23,9 @@ public sealed record SessionItem(string Id, string Title, string State, string M
 }
 
 /// <summary>One model's session inside a multi-model chat.</summary>
-public sealed record GroupTab(string Id, string Model, string State)
+public sealed record GroupTab(string Id, string Model, string State, string Mode = "work")
 {
-    public string Label => Model + (State is "running" or "starting_turn" ? "  ·  working" : State is "failed" or "process_lost" ? "  ·  failed" : State == "closed" ? "  ·  closed" : "");
+    public string Label => Model + " · " + Mode + (State is "running" or "starting_turn" ? "  ·  working" : State is "failed" or "process_lost" ? "  ·  failed" : State == "closed" ? "  ·  closed" : "");
 }
 
 public sealed class Transcript

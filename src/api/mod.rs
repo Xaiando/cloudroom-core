@@ -31,6 +31,7 @@ pub fn router(manager: Arc<Manager>, token: String) -> Router {
         .merge(crate::mac::routes())
         .merge(crate::secrets::routes())
         .merge(crate::session::thread::routes())
+        .merge(crate::session::bee::routes())
         .route("/v1/health", get(health))
         .route("/v1/ready", get(ready))
         .route("/v1/capabilities", get(capabilities))
@@ -912,6 +913,7 @@ async fn start(
                 body.command_guard_enabled,
                 body.strip_ai_co_authors,
                 body.system_prompt,
+                false,
             ),
         )
         .await?;

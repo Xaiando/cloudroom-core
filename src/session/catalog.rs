@@ -142,7 +142,9 @@ impl Manager {
                 | runtime::Kind::Fx
                 | runtime::Kind::OpenCode
                 | runtime::Kind::Hermes
-                | runtime::Kind::Devin => {
+                | runtime::Kind::Devin
+                | runtime::Kind::Grok
+                | runtime::Kind::Qwen => {
                     let capabilities = runtime::cursor::capabilities(*kind);
                     for (key, value) in capabilities.as_object().unwrap() {
                         harness[key] = value.clone();
@@ -151,6 +153,8 @@ impl Manager {
                         runtime::Kind::OpenCode => runtime::OPENCODE_REASONING_LEVELS,
                         runtime::Kind::Hermes => runtime::HERMES_REASONING_LEVELS,
                         runtime::Kind::Devin => runtime::DEVIN_REASONING_LEVELS,
+                        runtime::Kind::Grok => runtime::GROK_REASONING_LEVELS,
+                        runtime::Kind::Qwen => runtime::QWEN_REASONING_LEVELS,
                         _ => runtime::PI_REASONING_LEVELS,
                     });
                     // Cursor's print mode has no image input; Cursor and OpenCode open images from the attached path.
@@ -166,6 +170,12 @@ impl Manager {
                                 Err(_) => Value::Null,
                             }
                         };
+                    }
+                    if *kind == runtime::Kind::Grok {
+                        harness["models"] = json!(runtime::grok_models());
+                    }
+                    if *kind == runtime::Kind::Qwen {
+                        harness["models"] = json!(runtime::qwen_models());
                     }
                 }
                 runtime::Kind::Pi => {
@@ -235,6 +245,8 @@ impl Manager {
                     | runtime::Kind::OpenCode
                     | runtime::Kind::Hermes
                     | runtime::Kind::Devin
+                    | runtime::Kind::Grok
+                    | runtime::Kind::Qwen
             ) && session.reasoning.as_deref() != Some(reasoning)
             {
                 return Err(Error::Conflict("invalid reasoning effort"));
@@ -257,6 +269,10 @@ impl Manager {
             runtime::Kind::OpenCode => runtime::OPENCODE_REASONING_LEVELS.contains(&reasoning),
             runtime::Kind::Hermes => runtime::HERMES_REASONING_LEVELS.contains(&reasoning),
             runtime::Kind::Devin => runtime::DEVIN_REASONING_LEVELS.contains(&reasoning),
+            runtime::Kind::Grok => model
+                .as_deref()
+                .is_some_and(|selected| runtime::grok_accepts(selected, reasoning)),
+            runtime::Kind::Qwen => runtime::QWEN_REASONING_LEVELS.contains(&reasoning),
         };
         if !supported {
             return Err(Error::Conflict("invalid reasoning effort"));

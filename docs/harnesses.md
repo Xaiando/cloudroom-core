@@ -135,6 +135,14 @@ Models are OpenCode's `provider/model` values. Launch selects the model, then th
 
 Sign in with `opencode auth login` as the agent account. OpenCode 1 keeps logins in `.local/share/opencode/auth.json`; OpenCode 2 keeps them in `opencode.db` and moves them with `opencode auth export` and `opencode auth import`. Cloudroom's hosted sandboxes copy the user's Mac logins either way. Free `opencode/*` models need no login. Tested on Linux with OpenCode 1.18.34 and 2.0.22: start, effort selection, a shell tool call, a question prompt, and resume after a Core restart.
 
+## Grok
+
+Core discovers `grok.exe` at `CLOUDROOM_ACCOUNT_HOME/.grok/bin/grok.exe` (or `CLOUDROOM_GROK_BINARY`) when `~/.grok` exists. Use `harness: "grok"`. The default model is `grok-4.7`. `CLOUDROOM_HARNESS=grok` selects it as the default. No separate Cloudroom login is performed: the agent account's existing `grok login` (`~/.grok/auth.json`) or `XAI_API_KEY` is used. Core runs `grok --no-auto-update agent --always-approve stdio` and speaks ACP. Sessions live under `~/.grok/sessions`. Reasoning is `low`, `medium`, `high`, or `xhigh`, fixed for the session. On native Windows, Grok is offered alongside Codex.
+
+## Qwen
+
+Core discovers Qwen Code at `AppData/Roaming/npm/qwen.cmd` (resolved to its Node entry), `.local/bin/qwen`, or `CLOUDROOM_QWEN_BINARY`, with home `~/.qwen`. Use `harness: "qwen"`. The default model is `qwen3-coder-plus`. Core runs `qwen --acp --yolo`. Sign in with the Qwen CLI, or set `DASHSCOPE_API_KEY` or `OPENAI_API_KEY` for that account. On native Windows, Qwen is offered alongside Codex and Grok.
+
 ## Queue, completion and recovery
 
 There is one durable Cloudroom queue. Pi's memory-only steering/follow-up queue is not used for that backlog. RPC acknowledgement means acceptance, not completion. Pi requests settle only after its full run, including internal retries and compaction; an additional state check guards premature settled signals. Handled extension commands with no agent run are reconciled separately. Interrupt intent is correlated to the active request even when Pi aborts inside a tool without emitting a new assistant message. Interrupt clears Pi's internal continuations first, but preserves Cloudroom's durable future requests.

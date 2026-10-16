@@ -8,7 +8,8 @@
     <AssemblyName>Cloudroom.Desktop</AssemblyName>
     <RootNamespace>Cloudroom.Desktop</RootNamespace>
     <Version>0.1.0</Version>
-    <Description>Native Windows desktop client for Cloudroom Core</Description>
+    <Product>Cloud Bee</Product>
+    <Description>Cloud Bee native Windows desktop, powered by Cloudroom Core</Description>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 </Project>

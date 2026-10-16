@@ -26,6 +26,7 @@ pub mod cursor_print;
 mod devin;
 mod files;
 mod fx;
+mod grok;
 mod hermes;
 #[cfg_attr(windows, path = "../windows/linux.rs")]
 pub(crate) mod linux;
@@ -33,6 +34,7 @@ mod opencode;
 mod pi;
 pub(crate) mod pi_auth;
 mod process;
+mod qwen;
 #[cfg_attr(windows, path = "../windows/terminal.rs")]
 pub mod terminal;
 
@@ -54,6 +56,8 @@ pub enum Kind {
     OpenCode,
     Hermes,
     Devin,
+    Grok,
+    Qwen,
 }
 impl Kind {
     /// Harnesses that accept a per-turn `fast` service tier. Claude Fast stays off (ADR 0133).
@@ -112,9 +116,14 @@ pub fn pi_reasoning_accepted(level: &str) -> bool {
     level == "max" || PI_REASONING_LEVELS.contains(&level)
 }
 pub use devin::REASONING_LEVELS as DEVIN_REASONING_LEVELS;
+pub use grok::REASONING_LEVELS as GROK_REASONING_LEVELS;
+pub use grok::accepts as grok_accepts;
+pub use grok::models as grok_models;
 pub use hermes::REASONING_LEVELS as HERMES_REASONING_LEVELS;
 pub use opencode::REASONING_LEVELS as OPENCODE_REASONING_LEVELS;
 pub use opencode::import as import_opencode;
+pub use qwen::REASONING_LEVELS as QWEN_REASONING_LEVELS;
+pub use qwen::models as qwen_models;
 
 pub async fn claude_auth_ready(config: &Config) -> io::Result<bool> {
     claude::auth_ready(config).await
@@ -352,11 +361,16 @@ pub struct Handle {
     command_guard_enabled: bool,
     strip_ai_co_authors: bool,
     system_prompt: Option<String>,
+    managed_work: bool,
     controls: Arc<tokio::sync::Mutex<()>>,
     /// Claude's login when it started; it reads the login only then.
     login: Option<u64>,
 }
 impl Handle {
+    pub(crate) fn with_managed_work(mut self, managed: bool) -> Self {
+        self.managed_work = managed;
+        self
+    }
     pub fn spawn(
         config: &Config,
         kind: Kind,
@@ -431,9 +445,14 @@ impl Handle {
         system_prompt: Option<String>,
         fork: Option<&str>,
     ) -> io::Result<(Self, mpsc::Receiver<Event>)> {
-        if cfg!(windows) && (kind != Kind::Codex || command_guard_enabled || strip_ai_co_authors) {
+        if cfg!(windows) && !matches!(kind, Kind::Codex | Kind::Grok | Kind::Qwen) {
             return Err(io::Error::other(
-                "Windows currently supports Codex with command_guard_enabled=false and strip_ai_co_authors=false; the Unix command guard has not been ported",
+                "Windows currently supports Codex, Grok, and Qwen",
+            ));
+        }
+        if cfg!(windows) && (command_guard_enabled || strip_ai_co_authors) {
+            return Err(io::Error::other(
+                "Windows currently supports command_guard_enabled=false and strip_ai_co_authors=false; the Unix command guard has not been ported",
             ));
         }
         let mut profile = config
@@ -542,6 +561,28 @@ impl Handle {
                 None,
                 None,
             ),
+            Kind::Grok => (
+                grok::command(config, &profile)?,
+                Box::new(cursor::Protocol::new(
+                    config,
+                    &profile,
+                    resume.as_ref(),
+                    grok::GROK,
+                )),
+                None,
+                None,
+            ),
+            Kind::Qwen => (
+                qwen::command(config, &profile)?,
+                Box::new(cursor::Protocol::new(
+                    config,
+                    &profile,
+                    resume.as_ref(),
+                    qwen::QWEN,
+                )),
+                None,
+                None,
+            ),
             Kind::Pi => {
                 let (command, path, helper) = pi::command(
                     config,
@@ -583,6 +624,7 @@ impl Handle {
                 strip_ai_co_authors,
                 system_prompt,
                 controls: Arc::new(tokio::sync::Mutex::new(())),
+                managed_work: false,
                 login,
                 resume,
                 session_file,
@@ -639,7 +681,13 @@ impl Handle {
     pub fn capabilities(&self) -> Value {
         if matches!(
             self.kind,
-            Kind::Cursor | Kind::Fx | Kind::OpenCode | Kind::Hermes | Kind::Devin
+            Kind::Cursor
+                | Kind::Fx
+                | Kind::OpenCode
+                | Kind::Hermes
+                | Kind::Devin
+                | Kind::Grok
+                | Kind::Qwen
         ) {
             return cursor::capabilities(self.kind);
         }
@@ -659,6 +707,8 @@ impl Handle {
             Kind::OpenCode => opencode::start(&startup).await,
             Kind::Hermes => hermes::start(&startup).await,
             Kind::Devin => devin::start(&startup).await,
+            Kind::Grok => grok::start(&startup).await,
+            Kind::Qwen => qwen::start(&startup).await,
         }
     }
     /// Starts a `spawn_fork` harness and returns the side chat's new native ID.
@@ -690,11 +740,14 @@ impl Handle {
             Kind::Codex => codex::send(self, request, input).await.map(|()| Vec::new()),
             Kind::Pi => pi::send(self, request, input).await.map(|()| Vec::new()),
             Kind::Claude => claude::send(self, request, input).await,
-            Kind::Cursor | Kind::OpenCode | Kind::Hermes | Kind::Devin => {
-                cursor::send(self, request, input)
-                    .await
-                    .map(|()| Vec::new())
-            }
+            Kind::Cursor
+            | Kind::OpenCode
+            | Kind::Hermes
+            | Kind::Devin
+            | Kind::Grok
+            | Kind::Qwen => cursor::send(self, request, input)
+                .await
+                .map(|()| Vec::new()),
             Kind::Fx => fx::send(self, request, input).await.map(|()| Vec::new()),
         }
     }
@@ -710,9 +763,12 @@ impl Handle {
             Kind::Codex => codex::steer(self, state, text).await,
             Kind::Pi => pi::steer(self, request, text).await,
             Kind::Claude => claude::steer(self, request, text).await,
-            Kind::Cursor | Kind::OpenCode | Kind::Hermes | Kind::Devin => {
-                cursor::steer(self, request, text).await
-            }
+            Kind::Cursor
+            | Kind::OpenCode
+            | Kind::Hermes
+            | Kind::Devin
+            | Kind::Grok
+            | Kind::Qwen => cursor::steer(self, request, text).await,
             Kind::Fx => fx::steer(self, request, text).await,
         }
     }
@@ -721,12 +777,16 @@ impl Handle {
             Kind::Codex => codex::compact(self).await,
             Kind::Pi => pi::compact(self).await,
             Kind::Claude => claude::compact(self).await,
-            Kind::Cursor | Kind::Fx | Kind::OpenCode | Kind::Hermes | Kind::Devin => {
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "ACP compaction is not supported",
-                ))
-            }
+            Kind::Cursor
+            | Kind::Fx
+            | Kind::OpenCode
+            | Kind::Hermes
+            | Kind::Devin
+            | Kind::Grok
+            | Kind::Qwen => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "ACP compaction is not supported",
+            )),
         }
     }
     /// Sets, pauses, resumes, or clears the harness's durable goal as the user.
@@ -746,9 +806,16 @@ impl Handle {
             Kind::Claude => Err(io::Error::other(
                 "Claude rewind requires native process replacement",
             )),
-            Kind::Cursor | Kind::Fx | Kind::OpenCode | Kind::Hermes | Kind::Devin => Err(
-                io::Error::new(io::ErrorKind::InvalidInput, "ACP rewind is not supported"),
-            ),
+            Kind::Cursor
+            | Kind::Fx
+            | Kind::OpenCode
+            | Kind::Hermes
+            | Kind::Devin
+            | Kind::Grok
+            | Kind::Qwen => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "ACP rewind is not supported",
+            )),
         }
     }
     pub fn rewind_replacement(
@@ -827,7 +894,13 @@ impl Handle {
                 .filter(|usage| !usage.is_null())),
             Kind::Pi => pi::usage(self).await,
             Kind::Claude => Ok(Some(self.process.progress.borrow().last_usage.clone())),
-            Kind::Cursor | Kind::Fx | Kind::OpenCode | Kind::Hermes | Kind::Devin => Ok(None),
+            Kind::Cursor
+            | Kind::Fx
+            | Kind::OpenCode
+            | Kind::Hermes
+            | Kind::Devin
+            | Kind::Grok
+            | Kind::Qwen => Ok(None),
         }
     }
     pub async fn interrupt(&self, request: &str) -> io::Result<()> {
@@ -842,9 +915,13 @@ impl Handle {
             Kind::Codex => codex::interrupt(self, state).await,
             Kind::Pi => pi::interrupt(self, request).await,
             Kind::Claude => claude::interrupt(self, request).await,
-            Kind::Cursor | Kind::Fx | Kind::OpenCode | Kind::Hermes | Kind::Devin => {
-                cursor::interrupt(self, state).await
-            }
+            Kind::Cursor
+            | Kind::Fx
+            | Kind::OpenCode
+            | Kind::Hermes
+            | Kind::Devin
+            | Kind::Grok
+            | Kind::Qwen => cursor::interrupt(self, state).await,
         }
     }
     pub async fn system_message(&self, text: &str) -> io::Result<()> {
@@ -852,12 +929,16 @@ impl Handle {
             Kind::Codex => codex::notice(self, text).await,
             Kind::Pi => pi::notice(self, text).await,
             Kind::Claude => claude::notice(self, text).await,
-            Kind::Cursor | Kind::Fx | Kind::OpenCode | Kind::Hermes | Kind::Devin => {
-                Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "ACP context-only notices are unavailable",
-                ))
-            }
+            Kind::Cursor
+            | Kind::Fx
+            | Kind::OpenCode
+            | Kind::Hermes
+            | Kind::Devin
+            | Kind::Grok
+            | Kind::Qwen => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "ACP context-only notices are unavailable",
+            )),
         }
     }
     pub async fn pause(&self, paused: bool) -> io::Result<()> {
@@ -898,6 +979,8 @@ pub fn check_resume_history(
         Kind::OpenCode => return opencode::validate(profile, saved, identity),
         Kind::Hermes => return hermes::validate(profile, saved, identity),
         Kind::Devin => return devin::validate(profile, saved, identity),
+        Kind::Grok => return grok::validate(profile, saved, identity),
+        Kind::Qwen => return qwen::validate(profile, saved, identity),
         _ => {}
     }
     let file = files::open(
@@ -937,6 +1020,8 @@ pub fn recover_records(
             hermes::validate(profile, saved, policy.map(|p| (p.agent_uid, p.agent_gid)))
         }
         Kind::Devin => devin::validate(profile, saved, policy.map(|p| (p.agent_uid, p.agent_gid))),
+        Kind::Grok => grok::validate(profile, saved, policy.map(|p| (p.agent_uid, p.agent_gid))),
+        Kind::Qwen => qwen::validate(profile, saved, policy.map(|p| (p.agent_uid, p.agent_gid))),
         Kind::Codex => codex::recover(
             profile,
             saved,
@@ -976,7 +1061,7 @@ pub fn checkpoint(
         Kind::Codex | Kind::Claude => files::checkpoint(previous, data, native),
         Kind::Pi => pi::checkpoint(data, native),
         Kind::Cursor => cursor::checkpoint(previous, data, native),
-        Kind::Fx | Kind::OpenCode | Kind::Hermes | Kind::Devin => {
+        Kind::Fx | Kind::OpenCode | Kind::Hermes | Kind::Devin | Kind::Grok | Kind::Qwen => {
             Err(io::Error::other("ACP stream has no native records"))
         }
     }

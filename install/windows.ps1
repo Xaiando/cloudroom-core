@@ -54,6 +54,24 @@ function Find-CodexBinary {
     return $null
 }
 
+function Find-GrokBinary {
+    $native = Join-Path $env:USERPROFILE '.grok\bin\grok.exe'
+    if (Test-Path -LiteralPath $native) { return (Resolve-Path -LiteralPath $native).Path }
+    $command = Get-Command grok.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) { return $command.Source }
+    return $null
+}
+
+function Find-QwenBinary {
+    foreach ($name in @('qwen.exe', 'qwen.cmd')) {
+        $command = Get-Command $name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($command -and $command.Source -notlike '*.ps1') { return $command.Source }
+    }
+    $npm = Join-Path $env:APPDATA 'npm\qwen.cmd'
+    if (Test-Path -LiteralPath $npm) { return (Resolve-Path -LiteralPath $npm).Path }
+    return $null
+}
+
 function Invoke-CoreApi($Config, $Verb, $Path, $JsonBody) {
     if (!$Path.StartsWith('/v1/') -or $Path.Contains('://')) { throw 'ApiPath must start with /v1/.' }
     $request = @{
@@ -94,7 +112,18 @@ if ($Action -eq 'Gui') {
     if (!(Test-Path -LiteralPath $configPath)) {
         & $PSCommandPath -Action Configure -DataDirectory $DataDirectory -Repository $Repository -Model $Model -CodexBinary $CodexBinary -CodexHome $CodexHome -Port $Port
     }
-    if (!(Get-OwnedProcess)) { & $PSCommandPath -Action Start -DataDirectory $DataDirectory -CoreBinary $CoreBinary }
+    if (!(Get-OwnedProcess)) {
+        $guiConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        $alreadyReady = $false
+        try { $alreadyReady = (Invoke-CoreApi $guiConfig 'GET' '/v1/ready' $null).ready } catch { }
+        if (!$alreadyReady) {
+            $endpoint = [Uri]('http://' + $guiConfig.CLOUDROOM_LISTEN)
+            $probe = New-Object System.Net.Sockets.TcpClient
+            try { $portInUse = $probe.ConnectAsync($endpoint.Host, $endpoint.Port).Wait(500) -and $probe.Connected } catch { $portInUse = $false } finally { $probe.Dispose() }
+            if ($portInUse) { throw ('A process already uses ' + $guiConfig.CLOUDROOM_LISTEN + ', but it does not authenticate with these Core settings. Inspect the existing runtime before stopping it; Cloud Bee will not interrupt unknown work.') }
+            & $PSCommandPath -Action Start -DataDirectory $DataDirectory -CoreBinary $CoreBinary
+        }
+    }
     Start-Process -FilePath $desktopBinary -ArgumentList @('--config', ('"' + $configPath + '"'))
     return
 }
@@ -106,6 +135,10 @@ if ($Action -eq 'Check') {
     }
     $nativeCodex = Find-CodexBinary
     [pscustomobject]@{ Tool = 'codex'; Available = [bool]$nativeCodex; Path = $nativeCodex }
+    $grokBinary = Find-GrokBinary
+    [pscustomobject]@{ Tool = 'grok'; Available = [bool]$grokBinary; Path = $grokBinary }
+    $qwenBinary = Find-QwenBinary
+    [pscustomobject]@{ Tool = 'qwen'; Available = [bool]$qwenBinary; Path = $qwenBinary }
     [pscustomobject]@{ Tool = 'cloudroom'; Available = (Test-Path -LiteralPath $CoreBinary); Path = $CoreBinary }
     return
 }
@@ -166,6 +199,23 @@ if ($Action -eq 'Configure') {
         CLOUDROOM_CODEX_BINARY = $CodexBinary
         CLOUDROOM_CODEX_HOME = $CodexHome
         CLOUDROOM_CODEX_MODEL = $Model
+    }
+    $grokBinary = Find-GrokBinary
+    if ($grokBinary) {
+        $grokHome = Join-Path $env:USERPROFILE '.grok'
+        if (Test-Path -LiteralPath $grokHome) {
+            $config.CLOUDROOM_GROK_BINARY = $grokBinary
+            $config.CLOUDROOM_GROK_HOME = (Resolve-Path -LiteralPath $grokHome).Path
+            $config.CLOUDROOM_GROK_MODEL = 'grok-4.7'
+        }
+    }
+    $qwenBinary = Find-QwenBinary
+    if ($qwenBinary) {
+        $qwenHome = Join-Path $env:USERPROFILE '.qwen'
+        if (!(Test-Path -LiteralPath $qwenHome)) { [void][System.IO.Directory]::CreateDirectory($qwenHome) }
+        $config.CLOUDROOM_QWEN_BINARY = $qwenBinary
+        $config.CLOUDROOM_QWEN_HOME = (Resolve-Path -LiteralPath $qwenHome).Path
+        $config.CLOUDROOM_QWEN_MODEL = 'qwen3-coder-plus'
     }
     [System.IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json), [System.Text.UTF8Encoding]::new($false))
     Write-Output "Configured native Windows Core. Private settings: $configPath"

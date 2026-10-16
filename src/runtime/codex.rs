@@ -71,6 +71,10 @@ pub(super) async fn models(handle: &Handle) -> io::Result<Vec<super::Model>> {
 pub(super) async fn start(handle: &Handle, fork: Option<&super::Fork>) -> io::Result<String> {
     initialize(handle).await?;
     let mut params = json!({"cwd":handle.repository,"model":handle.profile.model,"approvalPolicy":"never","sandbox":"danger-full-access","ephemeral":false});
+    if handle.managed_work {
+        params["approvalPolicy"] = json!("untrusted");
+        params["sandbox"] = json!("workspace-write");
+    }
     if let Some(reasoning) = &handle.reasoning {
         params["config"] = json!({"model_reasoning_effort":reasoning});
     }
@@ -224,6 +228,10 @@ pub(super) async fn compact(handle: &Handle) -> io::Result<()> {
 pub(super) async fn rewind(handle: &Handle, input: &Value) -> io::Result<Value> {
     // Without these, the fork falls back to Codex's own sandbox, which cannot run in Cloud sandboxes.
     let mut params = json!({"threadId":handle.native()?,"approvalPolicy":"never","sandbox":"danger-full-access"});
+    if handle.managed_work {
+        params["approvalPolicy"] = json!("untrusted");
+        params["sandbox"] = json!("workspace-write");
+    }
     if let Some(system_prompt) = &handle.system_prompt {
         params["developerInstructions"] = json!(system_prompt);
     }

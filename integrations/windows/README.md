@@ -1,6 +1,10 @@
-# Cloudroom Desktop for Windows (alpha)
+# Cloud Bee desktop
 
-A native WPF client for the Windows Core runtime. It uses Core's authenticated HTTP API; it does not run another service, embed a browser, or duplicate session storage.
+The native WPF app is now **Cloud Bee**. Read the [Chat/Work and Council guide](../../docs/cloud-bee.md). `Cloudroom.Desktop.exe` remains the compatible binary name; double-click `Start-Cloud-Bee.cmd`.
+
+## Build and runtime compatibility
+
+A native WPF client for the Windows Core runtime. It uses Core's authenticated HTTP API; it does not run another service, embed a browser, or duplicate native execution history; linked Chat state and handoffs live in Core.
 
 ## Use
 
@@ -10,7 +14,7 @@ With the runtime configured and the desktop executable published:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install\windows.ps1 -Action Gui
 ```
 
-Or double-click `Start-Cloudroom.cmd` in the repository or extracted package. The execution-policy override applies only to this launch. The launcher finds native Codex on PATH, in its desktop bundle, in installed npm packages, or in Microsoft Store installations.
+Or double-click `Start-Cloud-Bee.cmd` in the repository or extracted package. The execution-policy override applies only to this launch. The launcher finds native Codex on PATH, in its desktop bundle, in installed npm packages, or in Microsoft Store installations.
 
 Create a desktop shortcut with:
 
@@ -18,7 +22,7 @@ Create a desktop shortcut with:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install\create-shortcut.ps1
 ```
 
-The shortcut is named **Cloudroom** and starts both Core and the GUI. Keep the application folder in place; recreate the shortcut after moving it.
+The shortcut is named **Cloud Bee** and starts both Core and the GUI. Keep the application folder in place; recreate the shortcut after moving it.
 
 The launcher starts Core if necessary and opens the desktop window. Closing the window leaves Core and its sessions running. Use `-Action Stop` to stop the backend.
 
@@ -26,7 +30,7 @@ The GUI reads `%LOCALAPPDATA%\CloudroomCore\core.json` by default. Connection se
 
 Create a session with the selected model and reasoning level, optionally in a new project folder. Send messages, watch live output, expand command output, browse saved sessions, pause/resume the queue, interrupt a running turn, close a session, or open its folder. Enter sends; Shift+Enter adds a line. Closing a session preserves history.
 
-To compare models, tick **Also run on** models in the new-session dialog. The app starts one session per model (each in its own `name-model` folder when you create a project folder; otherwise they share Core's workspace and can overwrite each other's files). Tabs above the conversation switch between them, and **Send to all models** delivers your message to every open session in the chat, each with its own request ID. Untick it to message only the selected tab. If one model fails to receive a message, retrying resends only to that model. The grouping lives in the app's memory: after a restart the sessions are still listed, but not as tabs.
+To compare models, tick **Also run on** models in the new-session dialog. The app starts one session per model (each in its own `name-model` folder when you create a project folder; otherwise they share Core's workspace and can overwrite each other's files). Tabs above the conversation switch between them, and **Send to all models** delivers your message to every open session in the chat, each with its own request ID. Untick it to message only the selected tab. If one model fails to receive a message, retrying resends only to that model. Cloud Bee groups and modes persist in Core. Groups of legacy native sessions retain their earlier in-memory grouping behavior.
 
 If a send loses its response, retry the unchanged draft to reuse its original request ID and payload. The app does not automatically resend uncertain work. Switching sessions retains drafts in memory. Session titles derive from the first prompt and are rebuilt from history when opened.
 

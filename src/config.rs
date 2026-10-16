@@ -98,12 +98,14 @@ impl Config {
             "opencode" => Kind::OpenCode,
             "hermes" => Kind::Hermes,
             "devin" => Kind::Devin,
+            "grok" => Kind::Grok,
+            "qwen" => Kind::Qwen,
             _ => return Err(io::Error::other("unsupported CLOUDROOM_HARNESS")),
         };
         let account_home: PathBuf = required("CLOUDROOM_ACCOUNT_HOME")?.into();
-        if cfg!(windows) && default_harness != Kind::Codex {
+        if cfg!(windows) && !matches!(default_harness, Kind::Codex | Kind::Grok | Kind::Qwen) {
             return Err(io::Error::other(
-                "The native Windows runtime currently supports Codex only",
+                "The native Windows runtime currently supports Codex, Grok, and Qwen",
             ));
         }
         let mut harnesses = BTreeMap::new();
@@ -191,11 +193,23 @@ impl Config {
                 );
             }
         }
+        if let Some(profile) = explicit_harness("GROK", account_home.join(".grok"), "grok-4.7")? {
+            harnesses.insert(Kind::Grok, profile);
+        } else if let Some(profile) = discover_grok(&account_home) {
+            harnesses.insert(Kind::Grok, profile);
+        }
+        if let Some(profile) =
+            explicit_harness("QWEN", account_home.join(".qwen"), "qwen3-coder-plus")?
+        {
+            harnesses.insert(Kind::Qwen, profile);
+        } else if let Some(profile) = discover_qwen(&account_home)? {
+            harnesses.insert(Kind::Qwen, profile);
+        }
         if cfg!(windows) {
-            harnesses.retain(|kind, _| *kind == Kind::Codex);
-            if !harnesses.contains_key(&Kind::Codex) {
+            harnesses.retain(|kind, _| matches!(kind, Kind::Codex | Kind::Grok | Kind::Qwen));
+            if harnesses.is_empty() {
                 return Err(io::Error::other(
-                    "Set CLOUDROOM_CODEX_BINARY, CLOUDROOM_CODEX_HOME and CLOUDROOM_CODEX_MODEL",
+                    "Configure Codex, or install Grok (grok.exe) or Qwen (qwen) for this account",
                 ));
             }
         }
@@ -266,4 +280,99 @@ fn required(name: &str) -> io::Result<String> {
         .ok()
         .filter(|s| !s.is_empty())
         .ok_or_else(|| io::Error::other(format!("{name} is required")))
+}
+
+/// `CLOUDROOM_{PREFIX}_BINARY` plus an optional home and model. A missing home directory is created.
+fn explicit_harness(
+    prefix: &str,
+    default_home: PathBuf,
+    default_model: &str,
+) -> io::Result<Option<HarnessConfig>> {
+    let binary_key = format!("CLOUDROOM_{prefix}_BINARY");
+    if env::var_os(&binary_key).is_none() {
+        return Ok(None);
+    }
+    let binary = node_entry(&PathBuf::from(required(&binary_key)?));
+    if !binary.is_file() {
+        return Err(io::Error::other(format!("{binary_key} is not a file")));
+    }
+    let home = env::var(format!("CLOUDROOM_{prefix}_HOME"))
+        .ok()
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or(default_home);
+    if !home.is_dir() {
+        std::fs::create_dir_all(&home)?;
+    }
+    let model = env::var(format!("CLOUDROOM_{prefix}_MODEL"))
+        .ok()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| default_model.to_owned());
+    Ok(Some(HarnessConfig {
+        binary,
+        home,
+        model,
+        provider: None,
+    }))
+}
+
+fn discover_grok(account_home: &std::path::Path) -> Option<HarnessConfig> {
+    let home = account_home.join(".grok");
+    if !home.is_dir() {
+        return None;
+    }
+    let binary = [
+        home.join("bin").join("grok.exe"),
+        home.join("bin").join("grok"),
+        account_home.join(".local").join("bin").join("grok"),
+        PathBuf::from("/usr/local/bin/grok"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())?;
+    Some(HarnessConfig {
+        binary,
+        home,
+        model: "grok-4.7".into(),
+        provider: None,
+    })
+}
+
+fn discover_qwen(account_home: &std::path::Path) -> io::Result<Option<HarnessConfig>> {
+    let binary = [
+        account_home.join("AppData/Roaming/npm/qwen.cmd"),
+        account_home.join("AppData/Roaming/npm/qwen.exe"),
+        account_home.join(".local/bin/qwen"),
+        PathBuf::from("/usr/local/bin/qwen"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file());
+    let Some(binary) = binary else {
+        return Ok(None);
+    };
+    let home = account_home.join(".qwen");
+    if !home.is_dir() {
+        std::fs::create_dir_all(&home)?;
+    }
+    Ok(Some(HarnessConfig {
+        binary: node_entry(&binary),
+        home,
+        model: "qwen3-coder-plus".into(),
+        provider: None,
+    }))
+}
+
+/// An npm `.cmd` shim breaks a long-lived ACP pipe. Prefer the Node entry beside it.
+fn node_entry(binary: &std::path::Path) -> PathBuf {
+    if binary.extension().and_then(|ext| ext.to_str()) != Some("cmd") {
+        return binary.to_path_buf();
+    }
+    let entry = binary.parent().map(|dir| {
+        dir.join("node_modules")
+            .join("@qwen-code")
+            .join("qwen-code")
+            .join("cli-entry.js")
+    });
+    entry
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| binary.to_path_buf())
 }

@@ -5,6 +5,7 @@ pub mod teleport;
 pub use outbox::Journal;
 mod accounts;
 pub mod automation;
+pub(crate) mod bee;
 mod catalog;
 mod guard;
 pub(crate) mod history;
@@ -284,6 +285,7 @@ pub struct Manager {
     pub(crate) terminals: runtime::terminal::Terminals,
     pub(crate) mac: crate::mac::Mac,
     pub(crate) secrets: crate::secrets::Secrets,
+    pub(crate) bee: bee::Store,
     codex_models: tokio::sync::Mutex<Option<(Instant, Vec<runtime::Model>)>>,
     claude_models: tokio::sync::Mutex<Option<(Instant, Vec<runtime::Model>)>>,
     cursor_models: tokio::sync::Mutex<Option<(Instant, Vec<runtime::Model>)>>,
@@ -405,6 +407,7 @@ impl Manager {
             registry.lock().unwrap().agent_counts()
         });
         Ok(Arc::new(Self {
+            bee: bee::Store::open(&config.state_dir)?,
             config,
             local,
             history,
@@ -644,6 +647,11 @@ impl Manager {
             runtime::Kind::OpenCode => runtime::OPENCODE_REASONING_LEVELS.contains(&reasoning),
             runtime::Kind::Hermes => runtime::HERMES_REASONING_LEVELS.contains(&reasoning),
             runtime::Kind::Devin => runtime::DEVIN_REASONING_LEVELS.contains(&reasoning),
+            runtime::Kind::Grok => {
+                let selected = model.unwrap_or(&self.config.harnesses[&kind].model);
+                runtime::grok_accepts(selected, reasoning)
+            }
+            runtime::Kind::Qwen => runtime::QWEN_REASONING_LEVELS.contains(&reasoning),
         };
         if !supported {
             return Err(Error::Conflict("invalid reasoning effort"));
@@ -658,11 +666,12 @@ impl Manager {
         model: Option<String>,
         reasoning: Option<String>,
         (workspace, workspace_name): (Option<String>, Option<String>),
-        (provider, command_guard_enabled, strip_ai_co_authors, system_prompt): (
+        (provider, command_guard_enabled, strip_ai_co_authors, system_prompt, managed_work): (
             Option<String>,
             Option<bool>,
             Option<bool>,
             Option<String>,
+            bool,
         ),
     ) -> Result<(String, Receipt)> {
         if cfg!(windows)
@@ -688,6 +697,14 @@ impl Manager {
         } else {
             json!({"harness":kind})
         };
+        if managed_work {
+            if kind != runtime::Kind::Codex {
+                return Err(Error::Conflict(
+                    "managed Work is unavailable for this harness",
+                ));
+            }
+            input["managed_work"] = json!(true);
+        }
         if command_guard_enabled == Some(false) {
             input["command_guard_enabled"] = json!(false);
         }
@@ -888,7 +905,8 @@ impl Manager {
                     Some(fork) => runtime::Handle::spawn_fork(&config, kind, fork, command_guard_enabled, strip_ai_co_authors, system_prompt)?,
                     None => runtime::Handle::spawn_guarded(&config, kind, None, command_guard_enabled, strip_ai_co_authors, system_prompt)?,
                 };
-                let handle = handle.with_reasoning(reasoning);
+                let managed = local.sessions[&id].receipts.values().any(|r| r.command == "start" && r.input["managed_work"] == true);
+                let handle = handle.with_reasoning(reasoning).with_managed_work(managed);
                 let pid = handle.pid();
                 local.sessions.get_mut(&id).unwrap().handle = Some(handle.clone());
                 local.append(&id, "harness", json!({"pid":pid}), None)?;
@@ -1858,6 +1876,11 @@ impl Manager {
                     local.sessions[&id].strip_ai_co_authors(),
                     local.sessions[&id].system_prompt(),
                 )?;
+                let managed = local.sessions[&id]
+                    .receipts
+                    .values()
+                    .any(|r| r.command == "start" && r.input["managed_work"] == true);
+                let handle = handle.with_managed_work(managed);
                 local.sessions.get_mut(&id).unwrap().handle = Some(handle.clone());
                 local.append(&id, "harness", json!({"pid":handle.pid()}), None)?;
                 (handle, events, native)

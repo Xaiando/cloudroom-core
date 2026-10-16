@@ -13,6 +13,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from bee_fixture import ChatFixture
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -35,7 +36,7 @@ def main():
             sock.bind(('127.0.0.1', 0))
             port = sock.getsockname()[1]
         config = dict(CLOUDROOM_TOKEN=secrets.token_hex(32), CLOUDROOM_LISTEN=f'127.0.0.1:{port}',
-                      CLOUDROOM_WINDOWS_LOCAL='1', CLOUDROOM_LOCAL_HISTORY='1', CLOUDROOM_STORE='gui-fixture',
+                      CLOUDROOM_WINDOWS_LOCAL='1', CLOUDROOM_LOCAL_HISTORY='1', CLOUDROOM_UNPROTECTED_TEST_MODE='1', CLOUDROOM_STORE='gui-fixture',
                       CLOUDROOM_STATE_DIR=str(root / 'state'), CLOUDROOM_ACCOUNT_HOME=str(home),
                       CLOUDROOM_REPOSITORY=str(repository), CLOUDROOM_CODEX_BINARY=str(wrapper),
                       CLOUDROOM_CODEX_HOME=str(home / '.codex'), CLOUDROOM_CODEX_MODEL='fixture')
@@ -59,6 +60,13 @@ def main():
                     time.sleep(.05)
                 else:
                     raise AssertionError('Core did not start')
+                chat = ChatFixture()
+                for model in ('fixture', 'basic'):
+                    request = Request(f'http://127.0.0.1:{port}/v1/bee/profiles', method='POST',
+                                      headers={'Authorization': 'Bearer ' + config['CLOUDROOM_TOKEN'], 'Content-Type': 'application/json'},
+                                      data=json.dumps(dict(harness='codex', model=model, provider='local', endpoint=chat.endpoint, api_key='')).encode())
+                    with urlopen(request, timeout=10) as response:
+                        assert response.code == 200
                 prompt_requests = {}
 
                 class Proxy(BaseHTTPRequestHandler):
@@ -92,11 +100,14 @@ def main():
                                 self.connection.shutdown(socket.SHUT_RDWR)
                                 self.connection.close()
                                 return
-                        self.send_response(status)
-                        self.send_header('Content-Type', 'application/json')
-                        self.send_header('Content-Length', str(len(data)))
-                        self.end_headers()
-                        self.wfile.write(data)
+                        try:
+                            self.send_response(status)
+                            self.send_header('Content-Type', 'application/json')
+                            self.send_header('Content-Length', str(len(data)))
+                            self.end_headers()
+                            self.wfile.write(data)
+                        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                            pass
 
                 proxy = ThreadingHTTPServer(('127.0.0.1', 0), Proxy)
                 threading.Thread(target=proxy.serve_forever, daemon=True).start()
@@ -107,6 +118,7 @@ def main():
                 finally:
                     proxy.shutdown()
                     proxy.server_close()
+                    chat.close()
                 if output.is_dir():
                     for artifact in output.iterdir():
                         shutil.copy2(artifact, artifacts / artifact.name)
@@ -114,7 +126,7 @@ def main():
                 report = json.loads((output / 'result.json').read_text())
                 assert report['passed'] is True
                 assert report['retried_lost_acceptance'] is True
-                first, *others = prompt_requests.values()
+                first, *others = [sent for path, sent in prompt_requests.items() if not path.startswith('/v1/bee/')]
                 assert len(first) == 2 and first[0] == first[1], 'Retry changed the request ID or payload'
                 assert report['multi_model'] is True
                 assert len(others) == 2 and all(len(sent) == 1 for sent in others), 'Each model must receive the prompt exactly once'

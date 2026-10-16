@@ -1,4 +1,6 @@
 private/
+/cloudroom.exe
+/Cloudroom.Desktop.exe
 /tmp/
 /target/
 .env

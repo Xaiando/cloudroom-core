@@ -12,6 +12,7 @@ public sealed class CoreClient : IDisposable
     private readonly HttpClient http;
     private readonly string token;
     public Uri Endpoint { get; }
+    public string Identity { get; }
 
     public CoreClient(string endpoint, string token)
     {
@@ -20,6 +21,7 @@ public sealed class CoreClient : IDisposable
             throw new ArgumentException("Use a local Core address, such as http://127.0.0.1:9840.");
         if (token.Length < 32 || token.Any(c => c < '!' || c > '~')) throw new ArgumentException("The Core token must have at least 32 visible ASCII characters.");
         Endpoint = uri;
+        Identity = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(uri.AbsoluteUri + "\n" + token)))[..16];
         this.token = token;
         // Never forward the local credential through a system proxy or a redirect.
         http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false }) { BaseAddress = uri, Timeout = TimeSpan.FromSeconds(20) };

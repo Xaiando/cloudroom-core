@@ -1,14 +1,14 @@
 <Window x:Class="Cloudroom.Desktop.MainWindow"
   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
   xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-  Title="Cloudroom" Width="1220" Height="820" MinWidth="920" MinHeight="660" WindowStartupLocation="CenterScreen"
+  Title="Cloud Bee" Width="1220" Height="820" MinWidth="920" MinHeight="660" WindowStartupLocation="CenterScreen"
   Background="{StaticResource Bg}" Foreground="{StaticResource Ink}" FontFamily="Segoe UI" WindowStyle="None" ResizeMode="CanResize"
   Loaded="WindowLoaded" Closed="WindowClosed">
   <shell:WindowChrome.WindowChrome><shell:WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0" UseAeroCaptionButtons="False"/></shell:WindowChrome.WindowChrome>
   <Grid>
     <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="*"/></Grid.RowDefinitions>
     <Border Background="#10141B" BorderBrush="#222A37" BorderThickness="0,0,0,1">
-      <Grid Margin="18,0,0,0"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="☁" Foreground="{StaticResource Accent}" FontSize="19" Margin="0,0,8,0"/><TextBlock Text="Cloudroom" FontWeight="SemiBold"/><TextBlock Text=" / Windows" Foreground="{StaticResource Muted}" FontSize="12" Margin="4,2,0,0"/></StackPanel>
+      <Grid Margin="18,0,0,0"><StackPanel Orientation="Horizontal" VerticalAlignment="Center"><TextBlock Text="⬡" Foreground="{StaticResource Accent}" FontSize="19" Margin="0,0,8,0"/><TextBlock Text="Cloud Bee" FontWeight="SemiBold"/><TextBlock Text=" / Windows" Foreground="{StaticResource Muted}" FontSize="12" Margin="4,2,0,0"/></StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" shell:WindowChrome.IsHitTestVisibleInChrome="True">
           <Button Content="─" Width="46" Style="{StaticResource Quiet}" Click="MinimizeWindow" AutomationProperties.Name="Minimize"/>
           <Button Content="□" Width="46" Style="{StaticResource Quiet}" Click="MaximizeWindow" AutomationProperties.Name="Maximize"/>
@@ -21,14 +21,14 @@
         <Grid Margin="16,24,16,16"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
           <StackPanel><TextBlock Text="YOUR WORKSPACE" Foreground="{StaticResource Muted}" FontSize="10" FontWeight="SemiBold" Margin="4,0,0,14"/><Button x:Name="NewButton" Content="＋   New session" Style="{StaticResource Primary}" HorizontalContentAlignment="Left" Click="ShowNewSession" IsEnabled="False"/></StackPanel>
           <Grid Grid.Row="1" Margin="4,28,4,12"><TextBlock Text="SESSIONS" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource Muted}"/><TextBlock x:Name="SessionCount" Text="0" HorizontalAlignment="Right" FontSize="11" Foreground="{StaticResource Muted}"/></Grid>
-          <ListBox x:Name="SessionList" Grid.Row="2" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="SessionSelected" AutomationProperties.Name="Sessions">
+          <ListBox x:Name="SessionList" Grid.Row="2" Foreground="{StaticResource Ink}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" SelectionChanged="SessionSelected" AutomationProperties.Name="Sessions">
             <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0,2"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><Border x:Name="Selection" CornerRadius="8" Padding="12,12" Background="Transparent"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsSelected" Value="True"><Setter TargetName="Selection" Property="Background" Value="#2B2B43"/></Trigger><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Selection" Property="BorderBrush" Value="#555168"/><Setter TargetName="Selection" Property="BorderThickness" Value="1"/><Setter TargetName="Selection" Property="Padding" Value="11,11"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate><DataTemplate><StackPanel><TextBlock Text="{Binding Title}" FontWeight="Medium" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/></StackPanel></DataTemplate></ListBox.ItemTemplate>
           </ListBox>
           <Border Grid.Row="3" BorderBrush="#2A3341" BorderThickness="0,1,0,0" Padding="2,18,2,0" Margin="0,12,0,0"><StackPanel>
             <StackPanel Orientation="Horizontal"><Ellipse x:Name="ConnectionDot" Width="7" Height="7" Fill="#6E7889" Margin="0,0,8,0"/><TextBlock x:Name="ConnectionLabel" Text="Connecting to Core…" FontSize="12"/></StackPanel>
             <TextBlock x:Name="AccountLabel" Text="Local runtime" FontSize="11" Foreground="{StaticResource Muted}" Margin="15,6,0,10"/>
-            <Button Content="⚙   Connection settings" Style="{StaticResource Quiet}" Click="ShowConnection"/>
+            <Button Content="Chat connections" Style="{StaticResource Quiet}" Click="ShowChatSetup"/><Button Content="⚙   Connection settings" Style="{StaticResource Quiet}" Click="ShowConnection"/>
           </StackPanel></Border>
         </Grid>
       </Border>
@@ -38,6 +38,10 @@
           <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"><Button x:Name="FolderButton" Content="↗ Folder" Style="{StaticResource Quiet}" ToolTip="Open the session folder" Click="OpenFolder" IsEnabled="False"/><Button x:Name="PauseButton" Content="Pause queue" Style="{StaticResource Quiet}" Click="PauseQueue" IsEnabled="False"/><Button x:Name="InterruptButton" Content="Interrupt" Style="{StaticResource Quiet}" Click="Interrupt" IsEnabled="False"/><Button x:Name="CloseButton" Content="Close" Style="{StaticResource Quiet}" Click="CloseSession" IsEnabled="False"/></StackPanel>
         </Grid></Border>
         <StackPanel Grid.Row="1">
+          <Border BorderBrush="#27303E" BorderThickness="0,0,0,1" Padding="24,8"><StackPanel>
+            <StackPanel Orientation="Horizontal"><Button x:Name="ChatModeButton" Content="Chat" Tag="chat" Click="ChangeMode" Margin="0,0,8,0"/><Button x:Name="WorkModeButton" Content="Work" Tag="work" Click="ChangeMode" Margin="0,0,12,0"/><Button Content="Council of AI" Click="ShowCouncil" Style="{StaticResource Quiet}"/></StackPanel>
+            <TextBlock x:Name="ModeNote" Foreground="{StaticResource Muted}" FontSize="11" TextWrapping="Wrap" Margin="2,7,0,0"/><TextBlock x:Name="BackgroundWork" Foreground="{StaticResource Accent}" FontSize="11" TextWrapping="Wrap" Margin="2,4,0,0"/>
+          </StackPanel></Border>
           <Border x:Name="GroupBar" Visibility="Collapsed" BorderBrush="#27303E" BorderThickness="0,0,0,1" Padding="24,8"><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <ListBox x:Name="GroupTabs" Background="Transparent" BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Disabled" SelectionChanged="GroupTabSelected" AutomationProperties.Name="Models in this chat">
               <ListBox.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListBox.ItemsPanel>
@@ -50,9 +54,9 @@
         </StackPanel>
         <Grid Grid.Row="2">
           <StackPanel x:Name="Welcome" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,0,24,30" MaxWidth="610">
-            <Border Width="68" Height="68" CornerRadius="21" Background="#25233D" BorderBrush="#514A76" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,24"><TextBlock Text="☁" FontSize="40" Foreground="{StaticResource Accent}" VerticalAlignment="Center" HorizontalAlignment="Center"/></Border>
+            <Border Width="68" Height="68" CornerRadius="21" Background="#25233D" BorderBrush="#514A76" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,24"><TextBlock Text="⬡" FontSize="40" Foreground="{StaticResource Accent}" VerticalAlignment="Center" HorizontalAlignment="Center"/></Border>
             <TextBlock Text="What are we building?" FontSize="30" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-            <TextBlock Text="Give your next idea a room of its own." Foreground="{StaticResource Muted}" FontSize="15" HorizontalAlignment="Center" Margin="0,12,0,28"/>
+            <TextBlock Text="Think together. Build with purpose." Foreground="{StaticResource Muted}" FontSize="15" HorizontalAlignment="Center" Margin="0,12,0,28"/>
             <UniformGrid Columns="3" Margin="0,6,0,0">
               <Button Click="ChooseSuggestion" Tag="Explore this project and explain its structure." Margin="0,0,10,0" Padding="16,18" Background="#19212D"><StackPanel><TextBlock Text="⌘" Foreground="{StaticResource Accent}" FontSize="22"/><TextBlock Text="Explore a project" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="Find your way around&#10;an unfamiliar codebase." Foreground="{StaticResource Muted}" FontSize="12" LineHeight="19"/></StackPanel></Button>
               <Button Click="ChooseSuggestion" Tag="Help me implement a new feature in this project. Start by asking what I want to build." Margin="0,0,10,0" Padding="16,18" Background="#19212D"><StackPanel><TextBlock Text="◇" Foreground="{StaticResource Accent}" FontSize="22"/><TextBlock Text="Build something" FontWeight="SemiBold" Margin="0,14,0,6"/><TextBlock Text="Turn a small idea into&#10;working software." Foreground="{StaticResource Muted}" FontSize="12" LineHeight="19"/></StackPanel></Button>
@@ -66,14 +70,18 @@
               <Expander Visibility="{Binding IsTool, Converter={StaticResource Visible}}" Foreground="{StaticResource Muted}"><Expander.Header><TextBlock Text="{Binding Detail}" FontFamily="Consolas" FontSize="12" TextTrimming="CharacterEllipsis"/></Expander.Header><TextBox Text="{Binding Text, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" Background="Transparent" BorderThickness="0" Margin="0,12,0,0" MaxHeight="260" VerticalScrollBarVisibility="Auto"/></Expander>
             </StackPanel></Border></DataTemplate></ListBox.ItemTemplate>
           </ListBox>
+          <Border x:Name="CouncilPanel" Visibility="Collapsed" Background="{StaticResource Bg}" Padding="24,16"><DockPanel>
+            <StackPanel DockPanel.Dock="Top"><TextBlock Text="Council of AI" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="Compare independent answers. Use Send to all models to broadcast. Each model keeps its own mode and authorization." TextWrapping="Wrap" Foreground="{StaticResource Muted}" Margin="0,8,0,16"/><TextBlock Text="Broadcast and comparison · autonomous delegation and consensus are not implemented." Foreground="{StaticResource Accent}" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,16"/></StackPanel>
+            <ListBox x:Name="CouncilAnswers" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch"><ListBox.ItemTemplate><DataTemplate><Border Background="#171E29" BorderBrush="#414358" BorderThickness="1" CornerRadius="12" Padding="18" Margin="0,0,0,12"><StackPanel><TextBlock Text="{Binding Role}" Foreground="{StaticResource Accent}" FontWeight="SemiBold"/><TextBlock Text="{Binding Detail}" Foreground="{StaticResource Muted}" FontSize="11" Margin="0,5,0,10"/><TextBox Text="{Binding Text}" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0"/></StackPanel></Border></DataTemplate></ListBox.ItemTemplate></ListBox>
+          </DockPanel></Border>
         </Grid>
         <StackPanel Grid.Row="3" Margin="30,4,30,16">
           <TextBlock x:Name="QueueLabel" Foreground="{StaticResource Muted}" FontSize="11" Margin="4,0,0,8"/>
           <Border Background="#1B2330" BorderBrush="#414358" BorderThickness="1" CornerRadius="14" Padding="14,8,12,12"><StackPanel>
-            <Grid><TextBox x:Name="Composer" Height="82" Background="Transparent" BorderThickness="0" Padding="6,10" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" PreviewKeyDown="ComposerKeyDown" AutomationProperties.Name="Message to Codex"/><TextBlock Text="Describe what you'd like to work on…" Foreground="#7F8BA1" Margin="7,12" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=Composer}" Value=""><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Grid>
-            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel Orientation="Horizontal"><ComboBox x:Name="ModelPicker" Width="195" SelectionChanged="ModelChanged" AutomationProperties.Name="Model"/><ComboBox x:Name="EffortPicker" Width="105" Margin="8,0,0,0" AutomationProperties.Name="Reasoning effort"/></StackPanel><Button x:Name="SendButton" Grid.Column="1" Content="Send  ↗" Style="{StaticResource Primary}" Padding="18,9" Click="SendMessage" IsEnabled="False"/></Grid>
+            <Grid><TextBox x:Name="Composer" Height="82" Background="Transparent" BorderThickness="0" Padding="6,10" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" PreviewKeyDown="ComposerKeyDown" AutomationProperties.Name="Message"/><TextBlock Text="Describe what you'd like to work on…" Foreground="#7F8BA1" Margin="7,12" IsHitTestVisible="False"><TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Text, ElementName=Composer}" Value=""><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock></Grid>
+            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel Orientation="Horizontal"><ComboBox x:Name="HarnessPicker" Width="110" Margin="0,0,8,0" SelectionChanged="HarnessChanged" AutomationProperties.Name="Agent"/><ComboBox x:Name="ModelPicker" Width="195" SelectionChanged="ModelChanged" AutomationProperties.Name="Model"/><ComboBox x:Name="EffortPicker" Width="105" Margin="8,0,0,0" AutomationProperties.Name="Reasoning effort"/></StackPanel><Button x:Name="SendButton" Grid.Column="1" Content="Send  ↗" Style="{StaticResource Primary}" Padding="18,9" Click="SendMessage" IsEnabled="False"/></Grid>
           </StackPanel></Border>
-          <Grid Margin="4,10,4,0"><TextBlock Text="Enter to send · Shift+Enter for a new line" Foreground="#7F8BA1" FontSize="10"/><TextBlock Text="LOCAL  /  CODEX" Foreground="#7F8BA1" FontSize="10" HorizontalAlignment="Right"/></Grid>
+          <Grid Margin="4,10,4,0"><TextBlock Text="Enter to send · Shift+Enter for a new line" Foreground="#7F8BA1" FontSize="10"/><TextBlock x:Name="RuntimeLabel" Text="LOCAL" Foreground="#7F8BA1" FontSize="10" HorizontalAlignment="Right"/></Grid>
         </StackPanel>
       </Grid>
     </Grid>
@@ -87,7 +95,8 @@
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Cancel" Style="{StaticResource Quiet}" Click="DismissDialog" Margin="0,0,8,0"/><Button Content="Connect" Style="{StaticResource Primary}" Click="ConnectClicked"/></StackPanel>
     </StackPanel></Border></Border>
     <Border x:Name="NewDialog" Grid.RowSpan="2" Background="#C010141C" Visibility="Collapsed"><Border Background="#1B2330" BorderBrush="#414C60" BorderThickness="1" CornerRadius="16" Width="440" Padding="30" HorizontalAlignment="Center" VerticalAlignment="Center"><StackPanel>
-      <TextBlock Text="A new room for your work" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Start a Codex session with the chosen model. Tick more models to run the same chat on all of them at once, each in its own session." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,24"/>
+      <TextBlock Text="A new Cloud Bee conversation" FontSize="22" FontWeight="SemiBold"/><TextBlock Text="Choose a model and optional Council members. Each starts in Chat view. Work starts only after you authorize its workspace and handoff." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,10,0,24"/>
+      <ComboBox ItemsSource="{Binding ItemsSource, ElementName=HarnessPicker}" SelectedItem="{Binding SelectedItem, ElementName=HarnessPicker, Mode=TwoWay}" Margin="0,0,0,14" AutomationProperties.Name="New session agent"/>
       <ComboBox ItemsSource="{Binding ItemsSource, ElementName=ModelPicker}" SelectedItem="{Binding SelectedItem, ElementName=ModelPicker, Mode=TwoWay}" Margin="0,0,0,14" AutomationProperties.Name="New session model"/>
       <TextBlock Text="ALSO RUN ON" Foreground="{StaticResource Muted}" FontSize="10" FontWeight="SemiBold" Margin="2,0,0,8"/>
       <Border Background="#10151D" BorderBrush="{StaticResource Edge}" BorderThickness="1" CornerRadius="6" Padding="10,6" Margin="0,0,0,18"><ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto"><StackPanel x:Name="CompareList" AutomationProperties.Name="Additional models"/></ScrollViewer></Border>
@@ -95,7 +104,29 @@
       <TextBox x:Name="ProjectBox" Text="my-project" IsEnabled="{Binding IsChecked, ElementName=NewWorkspaceCheck}" AutomationProperties.Name="Project folder name"/>
       <TextBlock Text="With several models, each gets its own folder (name-model). Without a new folder they all share Core's configured workspace and can overwrite each other's files." Foreground="{StaticResource Muted}" TextWrapping="Wrap" FontSize="12" Margin="0,12,0,24"/>
       <TextBlock x:Name="NewSessionError" Foreground="#FFC7CF" TextWrapping="Wrap" Margin="0,0,0,14"/>
+      <CheckBox x:Name="LegacyWorkCheck" Visibility="Collapsed" Foreground="{StaticResource Ink}" Margin="0,0,0,14"><TextBlock Text="Authorize legacy Work with this Windows account's permissions. Chat/Work switching and managed approval policy are unavailable for this harness." TextWrapping="Wrap" MaxWidth="370"/></CheckBox>
       <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Cancel" Style="{StaticResource Quiet}" Click="DismissDialog" Margin="0,0,8,0"/><Button x:Name="CreateButton" Content="Create session" Style="{StaticResource Primary}" Click="CreateSessionClicked"/></StackPanel>
+    </StackPanel></Border></Border>
+
+    <Border x:Name="HandoffDialog" Grid.RowSpan="2" Background="#E010141C" Visibility="Collapsed"><Border Background="#1B2330" CornerRadius="16" Width="620" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Center"><ScrollViewer MaxHeight="680" VerticalScrollBarVisibility="Auto"><StackPanel>
+      <TextBlock x:Name="HandoffTitle" Text="Authorize Work" FontSize="24" FontWeight="SemiBold"/><TextBlock x:Name="HandoffWorkspace" Foreground="{StaticResource Accent}" TextWrapping="Wrap" Margin="0,10,0,8"/>
+      <TextBlock Text="Review a compact handoff. Native histories remain separate. Only this text is transferred; exclude secrets. Switching views leaves active Work running." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+      <TextBlock Text="Objective / result summary"/><TextBox x:Name="HandoffObjective" TextWrapping="Wrap" AcceptsReturn="True" Height="52" Margin="0,4,0,8"/>
+      <TextBlock Text="Relevant context"/><TextBox x:Name="HandoffContext" TextWrapping="Wrap" AcceptsReturn="True" Height="52" Margin="0,4,0,8"/>
+      <TextBlock Text="Approved requirements"/><TextBox x:Name="HandoffRequirements" Margin="0,4,0,8"/>
+      <TextBlock Text="Constraints"/><TextBox x:Name="HandoffConstraints" Margin="0,4,0,8"/>
+      <TextBlock Text="Acceptance criteria"/><TextBox x:Name="HandoffAcceptance" Margin="0,4,0,8"/>
+      <TextBlock Text="Files / artifacts (references only)"/><TextBox x:Name="HandoffArtifacts" Margin="0,4,0,12"/>
+      <CheckBox x:Name="WorkAuthorization" Foreground="{StaticResource Ink}" Margin="0,8,0,16"><TextBlock Text="I authorize Work on the workspace above. Codex uses workspace-write and untrusted approvals; unsupported approval requests are denied. Windows account isolation is not provided." TextWrapping="Wrap" MaxWidth="530"/></CheckBox>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Content="Cancel" Click="CancelHandoff" Style="{StaticResource Quiet}" Margin="0,0,8,0"/><Button Content="Apply reviewed handoff" Click="ConfirmMode" Style="{StaticResource Primary}"/></StackPanel>
+    </StackPanel></ScrollViewer></Border></Border>
+    <Border x:Name="ChatSetupDialog" Grid.RowSpan="2" Background="#E010141C" Visibility="Collapsed"><Border Background="#1B2330" CornerRadius="16" Width="530" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Center"><StackPanel>
+      <TextBlock Text="Chat connections" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="Chat sends text only and has no tools. OpenAI and xAI API billing is separate from consumer subscriptions. Keys are saved in the protected local Core data directory." Foreground="{StaticResource Muted}" TextWrapping="Wrap" Margin="0,12,0,18"/>
+      <ComboBox x:Name="ProfileProvider" SelectedIndex="0"><ComboBoxItem Content="OpenAI API → Codex model tab" Tag="openai"/><ComboBoxItem Content="xAI API → Grok model tab" Tag="xai"/><ComboBoxItem Content="Local OpenAI-compatible server" Tag="local"/></ComboBox>
+      <TextBlock Text="Exact API model ID" Margin="0,14,0,5"/><TextBox x:Name="ProfileModel"/>
+      <TextBlock Text="Local endpoint (used only for Local; numeric loopback address)" Margin="0,14,0,5"/><TextBox x:Name="ProfileEndpoint" Text="http://127.0.0.1:11434/v1/chat/completions"/>
+      <TextBlock Text="API key (optional for local servers)" Margin="0,14,0,5"/><PasswordBox x:Name="ProfileKey"/>
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0"><Button Content="Cancel" Click="CloseChatSetup" Style="{StaticResource Quiet}" Margin="0,0,8,0"/><Button Content="Save connection" Click="SaveChatSetup" Style="{StaticResource Primary}"/></StackPanel>
     </StackPanel></Border></Border>
   </Grid>
 </Window>

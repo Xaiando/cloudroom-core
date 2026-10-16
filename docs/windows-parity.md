@@ -1,6 +1,6 @@
 # Windows desktop parity
 
-The Windows product follows the original Cloudroom desktop app's design and behavior. The first WPF client is a working fallback, not the feature baseline for the full product.
+The original Cloudroom desktop is the functional reference. Cloud Bee keeps our native WPF design as the primary Windows GUI and ports supported functions into Rust Core's API.
 
 ## Source and architecture
 
@@ -9,7 +9,7 @@ The Windows product follows the original Cloudroom desktop app's design and beha
 - Initial upstream baseline: `be71032c87e2621fdb317f57071a23bf2fb56603`.
 - Windows Core fork: https://github.com/Xaiando/cloudroom-core, branch `windows-native`.
 
-Keep the original desktop's React interface, Electron shell, plugins, local server, host daemon, and CLI together in its separate repository. Core remains one Rust package and one service. Preserve both projects' upstream licenses and attribution. Keep platform changes small enough to review and merge with upstream updates.
+Keep the original desktop's React interface, Electron shell, plugins, local server, host daemon, and CLI together in its separate reference/preview repository. The Cloud Bee native client remains primary. Core remains one Rust package and one service. Preserve both projects' upstream licenses and attribution. Keep platform changes small enough to review and merge with upstream updates.
 
 ## Acceptance checklist
 
@@ -33,7 +33,7 @@ Remote execution requires a configured host or cloud infrastructure. A local Win
 
 Prioritize improvements that can be demonstrated: reliable first-run discovery, actionable errors, safe restart and request recovery, persistent thread organization, clear account and model availability, and responsive navigation with many threads. Preserve the original workflow while measuring improvements with real Windows behavior and disposable fixtures.
 
-Use separate preview data while validating the original desktop port. Do not silently replace or migrate the existing WPF client's history. Switch the primary launcher only after the original desktop's startup and essential workflows pass.
+Use separate preview data while validating the original desktop port. Do not silently replace or migrate the existing WPF client's history. The original Electron preview has its own launcher and data; Cloud Bee remains the primary application selected by the user.
 
 ## Run the original desktop preview
 
@@ -44,6 +44,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install\original-deskt
 .\Start-Cloudroom-Preview.cmd
 ```
 
-Setup checks out our Windows desktop fork, installs the pinned dependencies, and builds the original app. The preview uses `%LOCALAPPDATA%\CloudroomDesktopPreview`; it does not reuse the WPF client's Core data. The existing `Start-Cloudroom.cmd` remains available as the fallback.
+Setup checks out our Windows desktop fork, installs the pinned dependencies, and builds the original app. The preview uses `%LOCALAPPDATA%\CloudroomDesktopPreview`; it does not reuse the WPF client's Core data. The existing `Start-Cloudroom.cmd` remains available as a compatibility launcher; `Start-Cloud-Bee.cmd` is the primary native launcher.
 
 The original app builds and type-checks on Windows, and its Plugins and Automations pages load. A local Node script automation has been created, run through the CLI and on a timer, checked for output and exit code, and deleted. Windows private-file ACL checks, plugin path containment, CLI argument forwarding, and local onboarding have dedicated checks. Full harness, terminal, child-thread, worktree, and remote parity still require acceptance tests; see the desktop fork's `gui/docs/windows.md` for validation and known suite limitations.
+
+## Cloud Bee modes and Council
+
+The WPF application remains our primary native Windows GUI, now branded Cloud Bee.
+The [Cloud Bee implementation](cloud-bee.md) adds durable mode envelopes, separate
+text-only API Chat, authorized Codex Work, reviewed handoffs and Council broadcast /
+comparison. Original desktop Plugins, Skills and Automations are still outstanding
+native features; the original Electron preview remains a separate reference app.

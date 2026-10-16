@@ -8,7 +8,9 @@ The `windows-native` branch adds a native `cloudroom.exe` backend, a **Windows d
 
 This is a **single-user, localhost-only runtime**: agents share your Windows account. Terminals, other harnesses, command guards, sync, and Linux security isolation still need porting.
 
-See the [Windows setup guide](docs/windows.md) and [desktop build guide](integrations/windows/README.md) for installation, supported features, limitations, and tests. Double-click `Start-Cloudroom.cmd` to launch, or run `install\create-shortcut.ps1` to add a desktop shortcut. The upstream Linux documentation follows below.
+**Cloud Bee** is our native Windows WPF application. It adds separate Chat/Work modes, reviewed context handoffs, durable conversations and a Council of AI comparison view. See the [Cloud Bee guide](docs/cloud-bee.md) for capabilities, API setup and limitations.
+
+See the [Windows setup guide](docs/windows.md) and [desktop build guide](integrations/windows/README.md) for installation, supported features, limitations, and tests. Double-click `Start-Cloud-Bee.cmd` to launch, or run `install\create-shortcut.ps1` to add a desktop shortcut. The upstream Linux documentation follows below.
 
 ![Cloudroom native Windows desktop](docs/windows-desktop.png)
 

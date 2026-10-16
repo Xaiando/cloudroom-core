@@ -42,6 +42,13 @@ def codex():
     try:
         for line in sys.stdin:
             message = json.loads(line)
+            if message.get('id') == 'bee-approval' and 'method' not in message:
+                Path('bee-approval.json').write_text(json.dumps(message))
+                if 'error' not in message:
+                    Path('bee-unapproved-action').touch()
+                event('item/agentMessage/delta', turnId=turn, itemId='text', delta='approval denied')
+                event('turn/completed', turn={'id': turn, 'status': 'completed'})
+                continue
             if "id" not in message:
                 continue
             method, params, result = message["method"], message.get("params", {}), {}
@@ -69,7 +76,7 @@ def codex():
                 ], "nextCursor": None}
             elif method == "thread/start":
                 with path.open("a") as file:
-                    file.write(json.dumps({"fixture": "launch", "reasoning": params.get("config", {}).get("model_reasoning_effort")}) + "\n")
+                    file.write(json.dumps({"fixture": "launch", "reasoning": params.get("config", {}).get("model_reasoning_effort"), "approvalPolicy": params.get("approvalPolicy"), "sandbox": params.get("sandbox")}) + "\n")
                 slow_exit = params["model"] == "slow-exit"
                 result = {"thread": {"id": native, "path": str(path)}, "model": params["model"]}
             elif method == "thread/resume":
@@ -125,7 +132,9 @@ def codex():
                     continue
                 if text != "reply-first":
                     send(reply)
-                if text == "hold":
+                if 'BEE_FIXTURE_APPROVAL' in text:
+                    send({'id': 'bee-approval', 'method': 'item/commandExecution/requestApproval', 'params': {'threadId': native, 'turnId': turn, 'itemId': 'approval', 'command': 'fixture consequential action'}})
+                elif text == "hold" or "BEE_FIXTURE_HOLD" in text:
                     job = f"from pathlib import Path; import time\nfor n in range(300):\n Path('{native}.ticks').write_text(str(n)); time.sleep(.1)\n"
                     child = subprocess.Popen([sys.executable, "-c", job], start_new_session=True,
                                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

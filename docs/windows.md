@@ -1,12 +1,14 @@
-# Native Windows local runtime
+# Cloud Bee / native Windows local runtime
 
-This branch builds `cloudroom.exe` directly on Windows, with a [native desktop GUI](../integrations/windows/README.md). No WSL, Docker, PostgreSQL or administrator session is needed. It is an initial **single-user, localhost-only Codex runtime**. It does not install an SCM Windows Service.
+This branch builds `cloudroom.exe` directly on Windows, with a [native desktop GUI](../integrations/windows/README.md). No WSL, Docker, PostgreSQL or administrator session is needed. It is an initial **single-user, localhost-only** runtime for Codex, Grok, and Qwen Code. It does not install an SCM Windows Service.
 
 Agents run under the same Windows identity as Core and have that account's permissions. The token and history are therefore readable by its agents. Job Objects manage process lifetime; they do not isolate files or credentials. Use a dedicated ordinary Windows account if you want to keep agent work separate from your personal account. The Linux installer and its two-account protection do not apply to this mode.
 
+See the [Cloud Bee guide](cloud-bee.md) for Chat/Work modes, Council, API connections and the renamed launcher. Existing Core configuration and paths remain compatible. Managed Work initially supports Codex; existing Grok/Qwen adapters remain experimental legacy Work.
+
 ## Set up
 
-Requires Windows 10/11, Git, Rust 1.89+ with the MSVC C++ build tools, and a native `codex.exe` with an existing login. The installed Codex desktop bundle's native CLI can be used. The fixture suite uses Python and Node.js; neither is required for basic Codex session execution.
+Requires Windows 10/11, Git, Rust 1.89+ with the MSVC C++ build tools, and a signed-in agent CLI: native `codex.exe`, `grok.exe`, or Qwen Code. The installed Codex desktop bundle's native CLI can be used. The fixture suite uses Python and Node.js; neither is required for basic session execution.
 
 Clone the Windows branch, then run these commands in PowerShell:
 
@@ -54,7 +56,7 @@ HTTP 202 accepts work asynchronously; inspect the receipt and saved events for c
 
 ## Remaining Windows work
 
-ConPTY terminals, other harnesses, the command guard, Git author hook, agent-local `room-cli` IPC, skills/settings sync, attachment upload, Teleport, SSH previews, Mac pairing, Linux virtual desktop automation, and Linux storage isolation are unavailable. The capability response marks these features false. Explicit requests to enable the command guard or author hook are rejected. Codex's own tools run without approval prompts, as in upstream; use this only for trusted tasks.
+Grok (`grok agent stdio`) and Qwen Code (`qwen --acp`) run on this Windows runtime when their CLIs and account homes are present. ConPTY terminals, the other Linux harnesses, the command guard, Git author hook, agent-local `room-cli` IPC, skills/settings sync, attachment upload, Teleport, SSH previews, Mac pairing, Linux virtual desktop automation, and Linux storage isolation are unavailable. The capability response marks these features false. Explicit requests to enable the command guard or author hook are rejected. Codex's own tools run without approval prompts, as in upstream; use this only for trusted tasks.
 
 The native Windows GUI lives in `integrations/windows`. It connects through the same authenticated API, provides session and model selection, live conversations, queue and session controls, and reads the existing local connection settings. Its standalone build bundles .NET. `install\windows.ps1 -Action Gui` starts Core if needed and opens the GUI. Closing the window leaves sessions running.
 

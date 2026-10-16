@@ -20,6 +20,9 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly Dictionary<string, string> titles = [], drafts = [];
     private readonly Dictionary<string, string[]> efforts = [];
+    private readonly Dictionary<string, Dictionary<string, string[]>> catalogs = [];
+    private readonly Dictionary<string, string> harnessDefaults = [], sessionHarnesses = [];
+    private bool refreshingHarness;
     // Multi-model chats: each group is the session IDs of one chat run on several models. Kept in memory only.
     private readonly List<List<string>> groups = [];
     private readonly Dictionary<string, string> states = [], sessionModels = [];
@@ -82,10 +85,10 @@ public partial class MainWindow : Window
         try
         {
             if (!Json.Flag(await candidate.Get("/v1/ready", lifetime.Token), "ready")) throw new IOException("Core is not ready for work.");
-            var discovered = await candidate.Get("/v1/capabilities", lifetime.Token);
-            var codex = Json.Array(discovered, "harnesses").FirstOrDefault(h => Json.Text(h, "id") == "codex") ?? throw new IOException("This Core does not have Codex configured.");
-            var models = Json.Array(codex, "models");
-            if (models.Count == 0) throw new IOException("Codex model discovery is unavailable. Check the Codex login and retry.");
+            var discovered = await candidate.Get("/v1/bee/capabilities", lifetime.Token);
+            var found = Json.Array(discovered, "harnesses");
+            if (found.Count == 0) throw new IOException("This Core does not have an agent configured.");
+            SaveOutbox();
             client?.Dispose();
             client = candidate;
             sessionId = null;
@@ -99,24 +102,12 @@ public partial class MainWindow : Window
             pendingStarts = null;
             pendingPrompts.Clear();
             groups.Clear();
+            modes.Clear(); groupIds.Clear(); workStates.Clear();
             states.Clear();
             sessionModels.Clear();
+            sessionHarnesses.Clear();
             capabilities = discovered;
-            efforts.Clear();
-            foreach (var model in models)
-            {
-                string name = Json.Text(model, "model");
-                if (name.Length > 0) efforts[name] = Json.Array(model, "reasoning_levels").Select(n => n?.GetValue<string>() ?? "").Where(s => s.Length > 0).ToArray();
-            }
-            ModelPicker.ItemsSource = efforts.Keys.ToArray();
-            ModelPicker.SelectedItem = efforts.ContainsKey(Json.Text(codex, "model")) ? Json.Text(codex, "model") : efforts.Keys.First();
-            CompareList.Children.Clear();
-            foreach (string name in efforts.Keys)
-            {
-                var box = new CheckBox { Content = name, Tag = name, Foreground = (Brush)FindResource("Ink"), Margin = new Thickness(0, 4, 0, 4) };
-                box.Click += (_, _) => SetControls();
-                CompareList.Children.Add(box);
-            }
+            ApplyCapabilities(discovered);
             UpdateGroupBar();
             connected = true;
             SetConnection(true);
@@ -125,15 +116,42 @@ public partial class MainWindow : Window
             ClearError();
             nextList = DateTime.MinValue;
             await RefreshSessions();
-            try
-            {
-                var auth = await client.Get("/v1/accounts/codex", lifetime.Token);
-                AccountLabel.Text = Json.Text(auth, "state") == "connected" ? "Codex connected · Local runtime" : "Codex · " + Json.Text(auth, "state", "Check login");
-            }
-            catch { AccountLabel.Text = "Codex · Check login status"; }
+            RestoreOutbox();
+            AccountLabel.Text = string.Join(", ", catalogs.Keys.Select(AgentName)) + " · Local runtime";
             SetControls();
         }
         catch { if (!ReferenceEquals(client, candidate)) candidate.Dispose(); throw; }
+    }
+
+    private void ApplyCapabilities(JsonNode discovered)
+    {
+        var found = Json.Array(discovered, "harnesses");
+        catalogs.Clear();
+        harnessDefaults.Clear();
+        var ids = new List<string>();
+        foreach (var harness in found)
+        {
+            string id = Json.Text(harness, "id");
+            if (id.Length == 0) continue;
+            var models = new Dictionary<string, string[]>();
+            foreach (var model in Json.Array(harness, "models"))
+            {
+                string name = Json.Text(model, "model");
+                if (name.Length == 0) continue;
+                models[name] = Levels(model);
+            }
+            if (models.Count == 0 && Json.Text(harness, "model") is string fallback && fallback.Length > 0)
+                models[fallback] = Levels(harness);
+            catalogs[id] = models;
+            harnessDefaults[id] = Json.Text(harness, "model");
+            ids.Add(id);
+        }
+        if (catalogs.Values.All(models => models.Count == 0)) throw new IOException("No models are available. Check the agent login and retry.");
+        refreshingHarness = true;
+        HarnessPicker.ItemsSource = ids.ToArray();
+        HarnessPicker.SelectedItem = ids.Contains("codex") ? "codex" : ids[0];
+        refreshingHarness = false;
+        ApplyHarness((string)HarnessPicker.SelectedItem);
     }
 
     private void SetConnection(bool ready)
@@ -147,15 +165,25 @@ public partial class MainWindow : Window
     {
         if (client == null) return;
         var source = client;
-        var result = await source.Get("/v1/sessions", lifetime.Token);
+        var legacy = await source.Get("/v1/sessions", lifetime.Token);
+        var managed = await source.Get("/v1/bee/sessions", lifetime.Token);
+        var linked = Json.Array(managed, "sessions").Select(s => Json.Text(s, "execution_session_id")).ToHashSet();
+        var combined = new JsonArray();
+        foreach (var item in Json.Array(managed, "sessions").Concat(Json.Array(legacy, "sessions").Where(s => !linked.Contains(Json.Text(s, "session_id"))))) combined.Add(item?.DeepClone());
+        var result = new JsonObject { ["sessions"] = combined, ["total"] = (long)combined.Count };
         if (!ReferenceEquals(client, source)) return;
         var items = Json.Array(result, "sessions").Select(item =>
         {
             string id = Json.Text(item, "session_id");
             states[id] = Json.Text(item, "state");
+            modes[id] = Json.Text(item, "mode", "work");
+            groupIds[id] = Json.Text(item, "group");
+            workStates[id] = Json.Text(item, "work_state");
             sessionModels[id] = Json.Text(item, "model");
             string path = Json.Text(item?["workspace"], "path");
-            return new SessionItem(id, titles.GetValueOrDefault(id, "Codex · " + id.Replace("cr_", "")[..Math.Min(10, id.Replace("cr_", "").Length)]), Json.Text(item, "state"), Json.Text(item, "model"), Path.GetFileName(path.TrimEnd('\\', '/')));
+            string harness = Json.Text(item, "harness", "codex");
+            sessionHarnesses[id] = harness;
+            return new SessionItem(id, titles.GetValueOrDefault(id, AgentName(harness) + " · " + id.Replace("cr_", "")[..Math.Min(10, id.Replace("cr_", "").Length)]), Json.Text(item, "state"), Json.Text(item, "model"), Path.GetFileName(path.TrimEnd('\\', '/')));
         }).ToList();
         refreshingList = true;
         SessionList.ItemsSource = items;
@@ -163,7 +191,14 @@ public partial class MainWindow : Window
         SessionCount.Text = Json.Number(result, "total").ToString();
         refreshingList = false;
         if (sessionId == null && items.Count > 0) SessionList.SelectedItem = items[0];
+        foreach (var members in groupIds.Where(p => p.Value.Length > 0).GroupBy(p => p.Value))
+        {
+            var ids = members.Select(p => p.Key).OrderBy(id => id).ToList();
+            groups.RemoveAll(g => g.Any(ids.Contains));
+            groups.Add(ids);
+        }
         UpdateGroupBar();
+        if (councilView) await RefreshCouncil();
         nextList = DateTime.UtcNow.AddSeconds(5);
     }
 
@@ -174,7 +209,7 @@ public partial class MainWindow : Window
         var group = ActiveGroup();
         GroupBar.Visibility = group == null ? Visibility.Collapsed : Visibility.Visible;
         if (group == null) return;
-        var tabs = group.Select(id => new GroupTab(id, sessionModels.GetValueOrDefault(id, "model"), states.GetValueOrDefault(id, ""))).ToList();
+        var tabs = group.Select(id => new GroupTab(id, sessionModels.GetValueOrDefault(id, "model"), states.GetValueOrDefault(id, ""), modes.GetValueOrDefault(id, "work"))).ToList();
         refreshingTabs = true;
         if (GroupTabs.ItemsSource is not List<GroupTab> shown || !shown.SequenceEqual(tabs)) GroupTabs.ItemsSource = tabs;
         GroupTabs.SelectedItem = tabs.FirstOrDefault(t => t.Id == sessionId);
@@ -204,19 +239,25 @@ public partial class MainWindow : Window
             if (DateTime.UtcNow >= nextList) await RefreshSessions();
             if (id != null)
             {
-                var state = (await source.Get("/v1/sessions/" + Uri.EscapeDataString(id), lifetime.Token))["session"];
+                var state = (await source.Get(SessionPath(id), lifetime.Token))["session"];
                 if (version != selectionVersion || !ReferenceEquals(source, client)) return;
                 current = state;
+                modes[id] = Json.Text(state, "mode", "work");
+                workStates[id] = Json.Text(state, "work_state");
                 folder = Json.Text(state?["workspace"], "path");
                 string status = Json.Text(state, "state");
                 states[id] = status;
                 StateLabel.Text = status.Replace('_', ' ').ToUpperInvariant();
-                HeaderTitle.Text = titles.GetValueOrDefault(id, "Codex session");
+                string agent = AgentName(Json.Text(state, "harness", sessionHarnesses.GetValueOrDefault(id, "codex")));
+                HeaderTitle.Text = titles.GetValueOrDefault(id, agent + " session");
                 HeaderSubtitle.Text = folder.Length > 0 ? folder : id;
-                QueueLabel.Text = Json.Array(state, "queue").Count > 0 ? Json.Array(state, "queue").Count + " message(s) queued" : status is "running" or "starting_turn" ? "Codex is working…" : "";
+                RuntimeLabel.Text = IsBee(id) ? modes[id].ToUpperInvariant() + "  /  " + agent.ToUpperInvariant() : "LOCAL  /  " + agent.ToUpperInvariant();
+                QueueLabel.Text = Json.Array(state, "queue").Count > 0 ? Json.Array(state, "queue").Count + " message(s) queued" : status is "running" or "starting_turn" ? agent + " is working…" : "";
+                long tokens = Json.Number(state?["chat_usage"], "total_tokens");
+                if (modes[id] == "chat" && tokens > 0) QueueLabel.Text += (QueueLabel.Text.Length > 0 ? " · " : "") + "Last Chat response: " + tokens + " tokens";
                 for (int page = 0; page < 4; page++)
                 {
-                    var records = Json.Array(await source.Get("/v1/sessions/" + Uri.EscapeDataString(id) + "/events?after=" + transcript.Cursor, lifetime.Token), "events");
+                    var records = Json.Array(await source.Get(SessionPath(id) + "/events?after=" + transcript.Cursor, lifetime.Token), "events");
                     if (version != selectionVersion || !ReferenceEquals(source, client)) return;
                     var scroll = FindScroll(ConversationList);
                     bool follow = scroll == null || scroll.ScrollableHeight - scroll.VerticalOffset < 60;
@@ -250,15 +291,27 @@ public partial class MainWindow : Window
     {
         if (sessionId != null) drafts[sessionId] = Composer.Text;
         sessionId = id;
+        refreshingList = true;
+        SessionList.SelectedItem = SessionList.Items.OfType<SessionItem>().FirstOrDefault(item => item.Id == id);
+        refreshingList = false;
+        councilView = false;
+        CouncilPanel.Visibility = Visibility.Collapsed;
         selectionVersion++;
         transcript.Reset();
         current = null;
         folder = null;
         Composer.Text = drafts.GetValueOrDefault(id, "");
-        HeaderTitle.Text = titles.GetValueOrDefault(id, "Codex session");
+        HeaderTitle.Text = titles.GetValueOrDefault(id, AgentName(sessionHarnesses.GetValueOrDefault(id, "codex")) + " session");
         HeaderSubtitle.Text = "Loading saved conversation…";
         StateLabel.Text = "LOADING";
         QueueLabel.Text = "";
+        if (sessionHarnesses.TryGetValue(id, out var harness) && catalogs.ContainsKey(harness))
+        {
+            refreshingHarness = true;
+            HarnessPicker.SelectedItem = harness;
+            refreshingHarness = false;
+            ApplyHarness(harness);
+        }
         if (sessionModels.TryGetValue(id, out var model) && efforts.ContainsKey(model)) ModelPicker.SelectedItem = model;
         UpdateGroupBar();
         SetControls();
@@ -275,9 +328,10 @@ public partial class MainWindow : Window
             bool newFolder = NewWorkspaceCheck.IsChecked == true;
             string name = ProjectBox.Text.Trim();
             var starts = new List<JsonObject>();
+            string groupId = Json.Id();
             foreach (string model in models)
             {
-                var start = new JsonObject { ["request_id"] = Json.Id(), ["harness"] = "codex", ["model"] = model };
+                var start = new JsonObject { ["request_id"] = Json.Id(), ["harness"] = HarnessPicker.SelectedItem as string ?? "codex", ["model"] = model };
                 if (EffortFor(model) is string effort && effort.Length > 0) start["reasoning"] = effort;
                 if (newFolder)
                 {
@@ -290,20 +344,23 @@ public partial class MainWindow : Window
                     start["workspace"] = "gui_" + Json.Id();
                     start["workspace_name"] = projectName;
                 }
+                if (smokeDirectory == null && LegacyWorkCheck.IsChecked != true) start["group"] = groupId;
                 starts.Add(start);
             }
             pendingStarts = starts;
+            SaveOutbox();
         }
         // Each start keeps its request ID, so retrying after a lost response never creates a duplicate session.
         var ids = new List<string>();
         foreach (var start in pendingStarts)
         {
-            string id = Json.Text(await client.Post("/v1/sessions", start, lifetime.Token), "session_id");
+            string id = Json.Text(await client.Post(start.ContainsKey("group") ? "/v1/bee/sessions" : "/v1/sessions", start, lifetime.Token), "session_id");
             ids.Add(id);
             sessionModels[id] = Json.Text(start, "model");
         }
         var started = pendingStarts.Select(s => Json.Text(s, "model")).ToList();
         pendingStarts = null;
+        SaveOutbox();
         if (ids.Count > 1) groups.Add(ids);
         foreach (var box in CompareList.Children.OfType<CheckBox>()) box.IsChecked = false;
         SelectSession(ids[0]);
@@ -322,10 +379,10 @@ public partial class MainWindow : Window
         var deadline = DateTime.UtcNow.AddSeconds(90);
         do
         {
-            var state = (await source.Get("/v1/sessions/" + id, lifetime.Token))["session"];
+            var state = (await source.Get(SessionPath(id), lifetime.Token))["session"];
             string status = Json.Text(state, "state");
             if (status is "idle" or "sleeping") return (null, state);
-            if (status is "failed" or "process_lost" or "closed") return (Json.Text(state, "startup_reason", "The session could not start. Check your Codex login."), state);
+            if (status is "failed" or "process_lost" or "closed") return (Json.Text(state, "startup_reason", "The session could not start. Check that agent's login."), state);
             await Task.Delay(200, lifetime.Token);
         } while (DateTime.UtcNow < deadline);
         return ("Session startup is still pending. It remains in the session list; check its status before sending again.", null);
@@ -343,9 +400,16 @@ public partial class MainWindow : Window
             ? group.Where(t => states.GetValueOrDefault(t) != "closed").ToList()
             : [id];
         if (targets.Count == 0) targets = [id];
+        targets.Sort(StringComparer.Ordinal);
+        if (pendingPrompts.Count > 0 && draftId != null)
+        {
+            if (pendingPrompts.Values.Any(prompt => Json.Text(prompt, "text") != text))
+                throw new IOException("A delivery is awaiting confirmation. Retry its original message before starting another request; its saved ID prevents duplicate execution.");
+            targets = pendingPrompts.Keys.OrderBy(target => target, StringComparer.Ordinal).ToList();
+        }
         // A lost acceptance is retried with the same IDs and payloads, never silently duplicated.
         string key = text + "\n" + string.Join(",", targets);
-        if (draftId == null || draftText != key)
+        if (draftId == null || pendingPrompts.Count == 0 && draftText != key)
         {
             draftId = Json.Id(); draftText = key;
             pendingPrompts.Clear();
@@ -356,11 +420,12 @@ public partial class MainWindow : Window
                 if (effort != null && effort.Length > 0) prompt["reasoning"] = effort;
                 pendingPrompts[target] = prompt;
             }
+            SaveOutbox();
         }
         var failed = new List<(string Target, Exception Error)>();
         foreach (var (target, prompt) in pendingPrompts.ToList())
         {
-            try { await client.Post("/v1/sessions/" + target + "/prompts", prompt, lifetime.Token); pendingPrompts.Remove(target); }
+            try { await client.Post(SessionPath(target) + "/prompts", prompt, lifetime.Token); pendingPrompts.Remove(target); SaveOutbox(); }
             catch (Exception error) when (!lifetime.IsCancellationRequested) { failed.Add((target, error)); }
         }
         if (failed.Count == 1 && targets.Count == 1) throw failed[0].Error;
@@ -369,6 +434,7 @@ public partial class MainWindow : Window
         draftId = null;
         drafts.Remove(id);
         Composer.Clear();
+        SaveOutbox();
         await Poll();
         Composer.Focus();
     }
@@ -397,7 +463,7 @@ public partial class MainWindow : Window
         if (client == null || sessionId == null) return;
         body ??= new JsonObject();
         body["request_id"] = Json.Id();
-        await client.Post("/v1/sessions/" + sessionId + "/" + command, body, lifetime.Token);
+        await client.Post(SessionPath(sessionId) + "/" + command, body, lifetime.Token);
         await Poll();
     }
 
@@ -413,6 +479,7 @@ public partial class MainWindow : Window
         SendButton.IsEnabled = ready && !closed && ModelPicker.SelectedItem != null;
         SessionList.IsEnabled = !acting;
         Composer.IsReadOnly = acting;
+        HarnessPicker.IsEnabled = ready && sessionId == null;
         ModelPicker.IsEnabled = ready && sessionId == null;
         EffortPicker.IsEnabled = ready && !closed;
         PauseButton.IsEnabled = ready && hasSession && !closed;
@@ -421,6 +488,46 @@ public partial class MainWindow : Window
         CloseButton.IsEnabled = ready && hasSession && !closed;
         FolderButton.IsEnabled = !string.IsNullOrEmpty(folder) && Directory.Exists(folder);
         SendButton.Content = acting ? "Working…" : draftId != null ? "Retry send ↗" : "Send  ↗";
+        UpdateModes();
+    }
+
+    private static string AgentName(string id) => id switch
+    {
+        "claude-code" => "Claude",
+        "opencode" => "OpenCode",
+        "grok" => "Grok",
+        "qwen" => "Qwen",
+        "codex" => "Codex",
+        _ => id.Length == 0 ? "Agent" : char.ToUpper(id[0]) + id[1..]
+    };
+
+    private static string[] Levels(JsonNode? node) =>
+        Json.Array(node, "reasoning_levels").Select(n => n?.GetValue<string>() ?? "").Where(s => s.Length > 0).ToArray();
+
+    private void ApplyHarness(string id)
+    {
+        efforts.Clear();
+        if (!catalogs.TryGetValue(id, out var models)) return;
+        foreach (var pair in models) efforts[pair.Key] = pair.Value;
+        var names = efforts.Keys.ToArray();
+        ModelPicker.ItemsSource = names;
+        string preferred = harnessDefaults.GetValueOrDefault(id, "");
+        ModelPicker.SelectedItem = names.Contains(preferred) ? preferred : names.FirstOrDefault();
+        CompareList.Children.Clear();
+        foreach (string name in names)
+        {
+            var box = new CheckBox { Content = name, Tag = name, Foreground = (Brush)FindResource("Ink"), Margin = new Thickness(0, 4, 0, 4) };
+            box.Click += (_, _) => SetControls();
+            CompareList.Children.Add(box);
+        }
+        RuntimeLabel.Text = "LOCAL  /  " + AgentName(id).ToUpperInvariant();
+    }
+
+    private void HarnessChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (refreshingHarness || HarnessPicker?.SelectedItem is not string id) return;
+        ApplyHarness(id);
+        UpdateModes();
     }
 
     private void ModelChanged(object sender, SelectionChangedEventArgs e)
@@ -430,6 +537,7 @@ public partial class MainWindow : Window
         string[] levels = ModelPicker.SelectedItem is string model ? efforts.GetValueOrDefault(model, []) : [];
         EffortPicker.ItemsSource = levels;
         EffortPicker.SelectedItem = levels.Contains(previous) ? previous : levels.Contains("medium") ? "medium" : levels.FirstOrDefault();
+        UpdateModes();
     }
     private async void SessionSelected(object sender, SelectionChangedEventArgs e)
     {
@@ -453,7 +561,7 @@ public partial class MainWindow : Window
     private async void PauseQueue(object sender, RoutedEventArgs e) => await Act(() => SessionCommand((string)PauseButton.Content == "Resume queue" ? "resume" : "stop"));
     private async void Interrupt(object sender, RoutedEventArgs e) => await Act(() => SessionCommand("interrupt", new JsonObject { ["target_request_id"] = Json.Text(current, "current_request") }));
     private async void CloseSession(object sender, RoutedEventArgs e) => await Act(() => SessionCommand("close"));
-    private void ShowNewSession(object sender, RoutedEventArgs e) { NewSessionError.Text = ""; NewDialog.Visibility = Visibility.Visible; NewWorkspaceCheck.IsChecked = false; }
+    private void ShowNewSession(object sender, RoutedEventArgs e) { NewSessionError.Text = ""; NewDialog.Visibility = Visibility.Visible; NewWorkspaceCheck.IsChecked = false; LegacyWorkCheck.IsChecked = false; }
     private void ShowConnection(object sender, RoutedEventArgs e) { ConnectionDialog.Visibility = Visibility.Visible; ConnectionError.Text = ""; }
     private void DismissDialog(object sender, RoutedEventArgs e) { ConnectionDialog.Visibility = Visibility.Collapsed; NewDialog.Visibility = Visibility.Collapsed; }
     private async void LoadSettings(object sender, RoutedEventArgs e)
@@ -489,7 +597,7 @@ public partial class MainWindow : Window
     private void MinimizeWindow(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
     private void MaximizeWindow(object sender, RoutedEventArgs e) => WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
     private void CloseWindow(object sender, RoutedEventArgs e) => Close();
-    private void WindowClosed(object? sender, EventArgs e) { timer.Stop(); lifetime.Cancel(); client?.Dispose(); lifetime.Dispose(); }
+    private void WindowClosed(object? sender, EventArgs e) { timer.Stop(); try { SaveOutbox(); } catch (IOException) { } lifetime.Cancel(); client?.Dispose(); lifetime.Dispose(); }
 
     private async Task SmokeTest(string output)
     {
@@ -511,6 +619,8 @@ public partial class MainWindow : Window
         catch (Exception error) when (error is HttpRequestException or IOException)
         {
             if (pendingPrompts.Count == 0 || Composer.Text.Length == 0) throw new IOException("A lost response discarded the pending draft.");
+            await Connect();
+            if (pendingPrompts.Count == 0 || Composer.Text.Length == 0) throw new IOException("Reconnect lost the durable retry outbox.");
             if (efforts["fixture"].Contains("high")) EffortPicker.SelectedItem = "high";
             await SendDraft();
             retried = true;
@@ -519,10 +629,15 @@ public partial class MainWindow : Window
         do { await Poll(); if (transcript.Messages.Any(m => m.Role == "CODEX" && m.Text.Contains("hello"))) break; await Task.Delay(100); } while (DateTime.UtcNow < deadline);
         if (!transcript.Messages.Any(m => m.Role == "YOU" && m.Text.Contains("Windows GUI")) || !transcript.Messages.Any(m => m.Role == "CODEX" && m.Text.Contains("hello"))) throw new IOException("Conversation did not render the fixture response.");
         await WaitForState(s => s?["receipts"] is JsonObject receipts && receipts.Any(r => Json.Text(r.Value, "command") == "prompt" && Json.Text(r.Value, "state") == "completed"));
-        long cursor = transcript.Cursor;
-        int count = transcript.Messages.Count;
-        await Poll();
-        if (count != transcript.Messages.Count || cursor != transcript.Cursor) throw new IOException("Polling duplicated the transcript.");
+        // A native capture may arrive after the completion receipt. Reapply a fixed
+        // event page to test deduplication without rejecting legitimate late records.
+        var captured = Json.Array(await client.Get(SessionPath(id) + "/events"), "events");
+        var duplicateCheck = new Transcript();
+        foreach (var record in captured) if (record != null) duplicateCheck.Apply(record);
+        string[] once = duplicateCheck.Messages.Select(message => message.Role + ":" + message.Text).ToArray();
+        long cursor = duplicateCheck.Cursor;
+        foreach (var record in captured) if (record != null) duplicateCheck.Apply(record);
+        if (cursor != duplicateCheck.Cursor || !once.SequenceEqual(duplicateCheck.Messages.Select(message => message.Role + ":" + message.Text))) throw new IOException("Polling duplicated the transcript.");
         await RefreshSessions();
         await Capture(Path.Combine(output, "conversation.png"));
         await SessionCommand("stop");
@@ -533,7 +648,7 @@ public partial class MainWindow : Window
         await WaitForState(s => Json.Text(s, "state") == "closed");
         // A fresh reducer proves that history replay reconstructs the visible conversation.
         var replay = new Transcript();
-        foreach (var record in Json.Array(await client.Get("/v1/sessions/" + id + "/events"), "events")) if (record != null) replay.Apply(record);
+        foreach (var record in Json.Array(await client.Get(SessionPath(id) + "/events"), "events")) if (record != null) replay.Apply(record);
         if (!replay.Messages.Any(m => m.Role == "CODEX" && m.Text.Contains("hello"))) throw new IOException("Transcript replay lost the assistant response.");
 
         // Several models at once: one session and folder per model, one prompt sent to all, switchable tabs.
@@ -559,7 +674,8 @@ public partial class MainWindow : Window
         }
         if (folders.Count != 2 || folders.Any(f => f.Length == 0)) throw new IOException("Models in one chat shared a folder.");
         await Capture(Path.Combine(output, "multi-model.png"));
-        await File.WriteAllTextAsync(Path.Combine(output, "result.json"), new JsonObject { ["passed"] = true, ["retried_lost_acceptance"] = retried, ["multi_model"] = true, ["session"] = id, ["messages"] = replay.Messages.Count, ["checks"] = "connection validation, project creation, prompt, live output, duplicate-free polling, pause/resume/close, history replay, lost-response retry, multi-model group with separate folders" }.ToJsonString());
+        await BeeSmokeTest(output);
+        await File.WriteAllTextAsync(Path.Combine(output, "result.json"), new JsonObject { ["passed"] = true, ["retried_lost_acceptance"] = retried, ["multi_model"] = true, ["session"] = id, ["messages"] = replay.Messages.Count, ["checks"] = "connection validation, project creation, prompt, live output, duplicate-free polling, pause/resume/close, history replay, lost-response retry, multi-model group with separate folders; Cloud Bee Chat/Work, Council, reconnect" }.ToJsonString());
     }
     private async Task WaitForState(Func<JsonNode?, bool> predicate)
     {

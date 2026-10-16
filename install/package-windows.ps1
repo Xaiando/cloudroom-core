@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $sourceRoot = Split-Path -Parent $PSScriptRoot
 if (!$CoreBinary) { $CoreBinary = Join-Path $sourceRoot 'target\release\cloudroom.exe' }
 if (!$DesktopBinary) { $DesktopBinary = Join-Path $sourceRoot 'integrations\windows\publish\Cloudroom.Desktop.exe' }
-if (!$Destination) { $Destination = Join-Path $sourceRoot 'private\releases\Cloudroom-Windows-alpha' }
+if (!$Destination) { $Destination = Join-Path $sourceRoot 'private\releases\Cloud-Bee-Windows-alpha' }
 if (!(Test-Path -LiteralPath $CoreBinary) -or !(Test-Path -LiteralPath $DesktopBinary)) { throw 'Build release Core and publish the standalone desktop app first.' }
 if ((Test-Path -LiteralPath $Destination) -or (Test-Path -LiteralPath ($Destination + '.zip'))) { throw 'Choose a new Destination; packages are never overwritten.' }
 [void][System.IO.Directory]::CreateDirectory($Destination)
@@ -19,15 +19,16 @@ Copy-Item -LiteralPath (Join-Path $sourceRoot 'LICENSE') -Destination (Join-Path
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'install\windows.ps1') -Destination (Join-Path $Destination 'install\windows.ps1')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'install\create-shortcut.ps1') -Destination (Join-Path $Destination 'install\create-shortcut.ps1')
 Copy-Item -LiteralPath (Join-Path $sourceRoot 'Start-Cloudroom.cmd') -Destination (Join-Path $Destination 'Start-Cloudroom.cmd')
+Copy-Item -LiteralPath (Join-Path $sourceRoot 'Start-Cloud-Bee.cmd') -Destination (Join-Path $Destination 'Start-Cloud-Bee.cmd')
 $guide = @'
-# Cloudroom for Windows (alpha)
+# Cloud Bee for Windows (alpha)
 
 This portable package includes the native Core runtime and desktop GUI.
 Requires Windows 10/11 x64 and a signed-in native codex.exe. The launcher finds
 Codex on PATH, in its desktop bundle, npm packages, or Microsoft Store installs.
 No .NET installation is required for the bundled desktop app.
 
-Double-click Start-Cloudroom.cmd. First use creates private runtime settings
+Double-click Start-Cloud-Bee.cmd. First use creates private runtime settings
 under %LOCALAPPDATA%\CloudroomCore, then starts Core and the GUI. If Codex
 cannot be found or its model is not configured, use PowerShell:
 
@@ -44,10 +45,17 @@ Closing the GUI leaves agents running. Stop Core with:
 
   .\install\windows.ps1 -Action Stop
 
-This is a single-user, localhost-only alpha. Agents share your Windows account
-and run without approval prompts. Terminals, attachments, other harnesses,
-command guards and Linux isolation are not ported. Back up the history directory
-while Core is stopped. Never share the generated core.json or account tokens.
+Use Chat connections to configure an OpenAI/xAI API key or a local compatible
+server. API billing is separate from consumer subscriptions. Chat is text-only;
+unsupported modes stay unavailable. Work initially supports Codex with a reviewed
+handoff and explicit workspace authorization. Council compares independent model
+answers and broadcasts to selected models; autonomous delegation is not included.
+
+This is a single-user, localhost-only alpha. Windows account isolation is not
+provided. Managed Work requests workspace-write/untrusted approvals; unsupported
+approval requests are denied. Existing legacy sessions keep their original
+permissions. Back up Core data while stopped. Never share core.json, bee/profiles.json,
+account tokens, conversations or desktop outbox files.
 
 Source and full setup guide: https://github.com/Xaiando/cloudroom-core
 '@
