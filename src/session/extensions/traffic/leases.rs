@@ -254,6 +254,19 @@ impl Engine {
         // Expiration fences old owners but deliberately retains overlapping ownership.
         self.drain(now)
     }
+    pub fn revoke(&mut self, id: &str) -> Result<()> {
+        let l = self.leases.get_mut(id).ok_or(Error::NotFound)?;
+        if !held(&l.state) {
+            return Err(invalid("released ownership cannot be revoked"));
+        }
+        self.generation = self
+            .generation
+            .checked_add(1)
+            .ok_or(invalid("lease generation exhausted"))?;
+        l.generation = self.generation;
+        l.state = "recovery".into();
+        Ok(())
+    }
     pub fn release(
         &mut self,
         id: &str,
@@ -467,6 +480,24 @@ mod tests {
             .unwrap();
         let l = e.reservation_lease("work").unwrap();
         assert!(e.release(&l.id, &l.token, l.generation, false, 1).is_err());
+    }
+    #[test]
+    fn failed_integration_is_fenced_without_releasing_or_waiting_for_expiry() {
+        let mut e = engine();
+        e.reserve("one", owner("one"), vec!["a".into()], 1000, 0)
+            .unwrap();
+        e.reserve("two", owner("two"), vec!["a".into()], 1000, 0)
+            .unwrap();
+        let l = e.reservation_lease("one").unwrap();
+        e.phase(&l.id, &l.token, l.generation, "integrating", true, 1)
+            .unwrap();
+        e.revoke(&l.id).unwrap();
+        assert!(e.validate(&l.id, &l.token, l.generation, 2).is_err());
+        assert_eq!(e.traffic(&["a".into()]).0, "blue");
+        assert!(e.reservation_lease("two").is_none());
+        assert!(e.recover_release(&l.id, false, 2).is_err());
+        e.recover_release(&l.id, true, 2).unwrap();
+        assert!(e.reservation_lease("two").is_some());
     }
     #[test]
     fn simultaneous_callers_cannot_obtain_conflicting_owners() {

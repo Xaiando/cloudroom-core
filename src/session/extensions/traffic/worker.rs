@@ -28,7 +28,10 @@ pub(super) fn spawn(m: &Arc<Manager>, id: &str) -> Result<()> {
             if stopped && !recovered {
                 recovered = release_all(c, &t).is_err();
             }
-            let _=c.update(&id,|t|{t.state=if stopped&&!recovered{"failed"}else{"recovery"}.into();t.quiescent=stopped;t.error=match error { Error::Conflict(reason)=>reason.to_owned(), _=>"Work did not complete verification. Inspect the linked session, shared file and preserved worktree.".into() };t.activity="No automatic integration or replay".into();});
+            let _=c.transact(|d|{
+                if !stopped||recovered {for lease in d.engine.leases.values().filter(|l|l.owner.task_id==id&&leases::held(&l.state)).map(|l|l.id.clone()).collect::<Vec<_>>(){d.engine.revoke(&lease)?;}}
+                let t=d.tasks.get_mut(&id).ok_or(Error::NotFound)?;t.state=if stopped&&!recovered{"failed"}else{"recovery"}.into();t.quiescent=stopped;t.error=match error { Error::Conflict(reason)=>reason.to_owned(), _=>"Work did not complete verification. Inspect the linked session, shared file and preserved worktree.".into() };t.activity="No automatic integration or replay".into();t.revision+=1;t.updated_at=now();Ok(())
+            });
         }
         let c = &m.extensions.traffic;
         let _gate = c.gate.lock().await;
@@ -44,37 +47,82 @@ pub(super) fn spawn(m: &Arc<Manager>, id: &str) -> Result<()> {
     Ok(())
 }
 pub(super) async fn close_owned(m: &Arc<Manager>, t: &Task) -> Result<()> {
+    let c = &m.extensions.traffic;
     let deadline = Instant::now() + Duration::from_secs(30);
     loop {
+        let tracked = c.owned_jobs.lock().unwrap().get(&t.session_id).cloned();
         let session = match m.session(&t.session_id).await {
             Ok(s) => s,
-            Err(Error::NotFound) => return Ok(()),
+            Err(Error::NotFound) => {
+                if let Some(h) = tracked {
+                    h.stop_owned().await?;
+                    if h.process_count() != Some(0) {
+                        return Err(invalid("owned Job exit is unconfirmed"));
+                    }
+                }
+                return Ok(());
+            }
             Err(e) => return Err(e),
         };
-        if matches!(session.state.as_str(), "closed" | "failed" | "process_lost")
-            && session.handle.is_none()
-        {
-            if let Some(pid) = session.harness_pid {
-                let created = process_identity(pid)?;
-                if created.is_some()
-                    && !(t.owned_pid == Some(pid)
-                        && t.owned_created.is_some()
-                        && t.owned_created != created)
-                {
-                    return Err(invalid(
-                        "owned process termination is unconfirmed; recovery ownership retained",
-                    ));
-                }
-            }
-            return Ok(());
-        }
-        // A failed/lost runtime has already closed its Job; close records its final session state.
+        let job = tracked.or_else(|| session.handle.clone());
         let _ = m.command(
             &t.session_id,
             format!("htc_close_{}_{}", short(&t.id), t.attempt),
             "close",
             json!({}),
         );
+        if let Some(h) = job {
+            c.owned_jobs
+                .lock()
+                .unwrap()
+                .insert(t.session_id.clone(), h.clone());
+            match h.process_count() {
+                Some(0) => return Ok(()),
+                None => {
+                    return Err(invalid(
+                        "owned Job accounting is unavailable; ownership retained",
+                    ));
+                }
+                _ => {}
+            }
+            if Instant::now() >= deadline
+                || matches!(session.state.as_str(), "failed" | "process_lost")
+            {
+                h.stop_owned().await?;
+                if h.process_count() == Some(0) {
+                    return Ok(());
+                }
+                return Err(invalid("owned Job exit is unconfirmed; ownership retained"));
+            }
+        } else if matches!(session.state.as_str(), "closed" | "failed" | "process_lost") {
+            if t.quiescent || session.harness_pid.is_none() {
+                return Ok(());
+            }
+            let owner_dead = match (t.core_pid, t.core_created) {
+                (Some(pid), Some(created)) => process_identity(pid)? != Some(created),
+                _ => false,
+            };
+            // The non-inheritable kill-on-close Job is owned by that Core instance.
+            // A missing parent PID alone is never proof while its Core owner remains alive.
+            if !owner_dead {
+                return Err(invalid(
+                    "previous Job termination cannot be confirmed; recovery ownership retained",
+                ));
+            }
+            if let Some(pid) = session.harness_pid {
+                let active = process_identity(pid)?;
+                if active.is_some()
+                    && !(t.owned_pid == Some(pid)
+                        && t.owned_created.is_some()
+                        && t.owned_created != active)
+                {
+                    return Err(invalid(
+                        "previous owned process remains alive; recovery ownership retained",
+                    ));
+                }
+            }
+            return Ok(());
+        }
         if Instant::now() >= deadline {
             return Err(invalid(
                 "owned execution termination is unconfirmed; ownership retained",
@@ -83,7 +131,7 @@ pub(super) async fn close_owned(m: &Arc<Manager>, t: &Task) -> Result<()> {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
-fn process_identity(pid: u32) -> Result<Option<u64>> {
+pub(super) fn process_identity(pid: u32) -> Result<Option<u64>> {
     use std::os::windows::io::{FromRawHandle, OwnedHandle};
     use windows_sys::Win32::{
         Foundation::{FILETIME, GetLastError},
@@ -215,6 +263,14 @@ async fn execute(m: &Arc<Manager>, id: &str, mut stop: watch::Receiver<String>) 
         }
         let session = m.session(&t.session_id).await?;
         if session.state == "idle" {
+            let handle = session
+                .handle
+                .clone()
+                .ok_or(invalid("owned native Job handle is missing"))?;
+            c.owned_jobs
+                .lock()
+                .unwrap()
+                .insert(t.session_id.clone(), handle);
             let pid = session
                 .harness_pid
                 .ok_or(invalid("native Work process identity missing"))?;
@@ -403,11 +459,12 @@ pub(super) async fn integrate(m: &Arc<Manager>, t: &Task) -> Result<()> {
             Ok(())
         }),
         Err(e) => {
-            let _ = c.update(&t.id, |t| {
-                t.state = "recovery".into();
-                t.activity =
-                    "Integration uncertain or rejected; inspect file save history and current disk"
-                        .into();
+            let _ = c.transact(|d| {
+                d.engine.revoke(&permit.lease)?;
+                let t=d.tasks.get_mut(&t.id).ok_or(Error::NotFound)?;
+                t.state = "recovery".into();t.revision+=1;t.updated_at=now();
+                t.activity="Integration uncertain or rejected; ownership fenced; inspect file save history and current disk".into();
+                Ok(())
             });
             Err(e)
         }

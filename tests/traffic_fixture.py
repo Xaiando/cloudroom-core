@@ -116,6 +116,25 @@ def exercise_traffic(api, root, until):
     act(a, 'reject')
     assert settled(b)['task']['state'] == 'verification'
     act(b, 'reject')
+    # A failure inside the guarded save must fence integration immediately, even before TTL expiry.
+    guarded = start(independent, 'guarded_save', path='other.txt')['id']
+    checked = settled(guarded)
+    assert checked['task']['state'] == 'verification'
+    old_generation = checked['task']['lease']['generation']
+    alias = root / 'hardlink-save-guard.txt'
+    import os
+    os.link(repo / 'other.txt', alias)
+    try:
+        act(guarded, 'approve', expected=409)
+        recovery = detail(guarded)
+        assert recovery['task']['state'] == 'recovery' and recovery['task']['traffic'] == 'blue'
+        assert recovery['task']['lease']['state'] == 'recovery' and recovery['task']['lease']['generation'] > old_generation
+        assert alias.read_bytes() == b'Independent baseline\n'
+        current = api('GET', f'/v1/bee/files/{independent}/preview?path=other.txt')
+        act(guarded, 'recover', current_revision=current['revision'])
+        assert detail(guarded)['task']['traffic'] == 'green'
+    finally:
+        alias.unlink()
     invalid = council('HTC_FIXTURE_INVALID')
     bad = start(invalid, 'invalid_proposal', path='other.txt')['id']
     assert settled(bad)['task']['state'] == 'failed'

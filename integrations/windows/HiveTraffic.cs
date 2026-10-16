@@ -26,8 +26,9 @@ public partial class MainWindow
                 string label = light switch { "red" => "RED · Modifying", "yellow" => "YELLOW · Reserved / waiting", "blue" => "BLUE · Verification / recovery", _ => "GREEN · Available" };
                 Brush color = light switch { "red" => Brushes.Salmon, "yellow" => Brushes.Gold, "blue" => Brushes.DeepSkyBlue, _ => Brushes.LightGreen };
                 string owner = Json.Text(t?["lease"]?["owner"], "agent_id");
+                string ownerTask = Json.Text(t?["lease"]?["owner"], "task_id");
                 string queue = Json.Number(t, "queue_position") > 0 ? " · queue " + Json.Number(t, "queue_position") : "";
-                return new HiveTaskView(Json.Text(t, "id"), "Codex · " + Json.Text(t, "model"), Json.Text(t, "path"), "Task: " + phase.Replace('_', ' ') + queue, label, color, Json.Text(t, "activity") + (owner.Length > 0 ? "\nResource owner: " + owner : ""), phase is "preparing" or "executing" or "stopping" or "integrating", phase == "waiting" ? Brushes.Gold : Brushes.WhiteSmoke);
+                return new HiveTaskView(Json.Text(t, "id"), "Codex · " + Json.Text(t, "model") + " · " + HiveWorker(Json.Text(t, "id")), Json.Text(t, "path"), "Task: " + phase.Replace('_', ' ') + queue, label, color, Json.Text(t, "activity") + (owner.Length > 0 ? "\nResource owner: " + owner + " · " + HiveWorker(ownerTask) : ""), phase is "preparing" or "executing" or "stopping" or "integrating", phase == "waiting" ? Brushes.Gold : Brushes.WhiteSmoke);
             }).ToList();
             hiveRendered = rendered;
         }
@@ -147,6 +148,7 @@ public partial class MainWindow
         using (var file = File.Create(System.IO.Path.Combine(smokeOutput, "cloud-bee-hive-review.png"))) encoder.Save(file);
         dialog.Close();
     }
+    private static string HiveWorker(string id) => "worker " + (id.Length > 12 ? id[^8..] : id);
     private static string HiveTime(long ms) => ms > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(ms).ToLocalTime().ToString("T") : "—";
 
     private async Task HiveSmokeTest(string output)

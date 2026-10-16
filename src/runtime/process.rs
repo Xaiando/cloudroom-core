@@ -291,6 +291,14 @@ impl Process {
     pub fn process_count(&self) -> Option<usize> {
         self.group.as_ref()?.process_count()
     }
+    #[cfg(windows)]
+    pub async fn stop_owned(&self) -> io::Result<()> {
+        self.group
+            .as_ref()
+            .ok_or_else(|| io::Error::other("owned workload unavailable"))?
+            .stop()
+            .await
+    }
     pub async fn call(
         &self,
         method: &str,

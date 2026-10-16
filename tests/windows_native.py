@@ -15,6 +15,21 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class NativeDirectory(tempfile.TemporaryDirectory):
+    def cleanup(self):
+        target = Path(self.name).resolve()
+        assert target.parent == Path(tempfile.gettempdir()).resolve() and target.name.startswith('cloudroom windows spaces ')
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                return super().cleanup()
+            except PermissionError:
+                # Core crash waits can precede final Windows release of killed harness file handles.
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(.05)
+
+
 def until(check, label, timeout=30):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -45,7 +60,7 @@ class ProcessHandle:
 def main():
     assert sys.platform == 'win32', 'This test requires native Windows'
     binary = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / 'target/debug/cloudroom.exe'
-    with tempfile.TemporaryDirectory(prefix='cloudroom windows spaces ') as folder:
+    with NativeDirectory(prefix='cloudroom windows spaces ') as folder:
         root = Path(folder)
         home, repository = root / 'home', root / 'repository'
         for path in [home, repository, home / '.codex']:
@@ -121,6 +136,9 @@ def main():
 
         try:
             core = start()
+            duplicate = subprocess.run([str(binary)], env={**env, 'CLOUDROOM_LISTEN': '127.0.0.1:0'}, capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW)
+            assert duplicate.returncode != 0 and (b'code: 32' in duplicate.stderr or b'os error 32' in duplicate.stderr), duplicate.stderr
+            assert api('GET', '/v1/ready')['ready'] and api('GET', '/v1/sessions')['total'] == 0
             api('GET', '/v1/health', auth=False, expected=401)
             capabilities = api('GET', '/v1/capabilities')
             assert capabilities['platform'] == 'windows'
@@ -171,7 +189,7 @@ def main():
             api('POST', f'/v1/sessions/{closed}/close', {'request_id': 'close'}, expected=202)
             until(lambda: session(closed)['state'] == 'closed', 'session closed')
             descendant.wait()
-            print('PASS: native API/auth/catalog, prompts, workspace paths with spaces, journal recovery, and descendant cleanup on close/crash')
+            print('PASS: exclusive Core state ownership, native API/auth/catalog, prompts, workspace paths with spaces, journal recovery, and descendant cleanup on close/crash')
         finally:
             if core and core.poll() is None:
                 core.kill()

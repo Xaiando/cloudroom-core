@@ -81,7 +81,8 @@ SQL tables, or production database migrations are introduced.
   generation and retains recovery ownership, rather than assuming a writer died.
 * State mutations copy, serialize, sync, and replace the authoritative private file
   before publishing the new state. Native session startup also uses the existing
-  durable journal. Completed requests retain their outcomes; changed accepted payloads and stale
+  durable journal. An exclusive Windows state handle is acquired before journal
+  recovery, so another Core cannot mutate the same data directory. Completed requests retain their outcomes; changed accepted payloads and stale
   task revisions are rejected. Interrupted integration requires reconciliation,
   rather than replay. GUI pending requests persist
   privately across reconnect and require explicit retry.
@@ -104,8 +105,13 @@ Rejecting a stopped proposal releases its coordination while keeping its content
 On Core restart, held leases receive new generations and enter recovery; queued
 requests are not automatically replayed. HTC native sessions are excluded from
 the normal conversation auto-resume behavior. A live old writer keeps ownership;
-Core checks its recorded process identity and never kills an unrelated reused PID.
-The Windows Job's lifetime owns its descendants.
+Core retains the native Job handle while running and checks its active-process
+count, including descendants, before releasing ownership. Recovery also checks
+the recorded Core-process and native-process creation identities; a reused PID
+is never killed. Unconfirmed termination retains recovery ownership. After a
+Core crash, the non-inheritable kill-on-close Job terminates its processes, as
+described by [Microsoft's Job Object contract](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects).
+HTC-owned sessions are not automatically resumed.
 
 For BLUE recovery, inspect the worktree, proposal/baseline, current shared file and
 file-save history. **Keep current disk / release recovery** requires explicit review,
@@ -152,7 +158,8 @@ directory overlap, atomic sets/deadlock prevention, expiry/stale generations,
 duplicates, simultaneous callers, Chat denial, Windows path aliases, durable state,
 and restart fencing. `tests/traffic_fixture.py` exercises real Windows-owned native
 processes, disposable Git worktrees, parallel workers, integration queues, stale
-baselines, verification rejection, cancellation preservation and restart reconciliation.
+baselines, verification rejection, guarded-save hard-link failures with immediate
+recovery fencing, cancellation preservation and restart reconciliation.
 `tests/windows_gui.py` exercises the actual WPF panel, proposal controls, saved
 backend states and lost-acceptance retries. Provider/native fixtures spend no model
 tokens. Required Rust checks and the native launcher/Bee/extensions/GUI suites must

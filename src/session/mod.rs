@@ -301,10 +301,25 @@ pub struct Manager {
     teleports: teleport::Transfers,
     /// Asks the history uploader to send now (a drain or stop), instead of at its next 30-second batch.
     uploads: tokio::sync::Notify,
+    #[cfg(windows)]
+    _native_instance_lock: std::fs::File,
 }
 
 impl Manager {
     pub fn open(config: Config) -> io::Result<Arc<Self>> {
+        // Acquire before journal recovery: a second Core must not mutate the first's state.
+        #[cfg(windows)]
+        let native_instance_lock = {
+            use std::os::windows::fs::OpenOptionsExt as _;
+            std::fs::create_dir_all(&config.state_dir)?;
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .share_mode(0)
+                .open(config.state_dir.join("core.instance.lock"))?
+        };
         let mut local = Local::open(&config.state_dir)?;
         // Resume conversations, not uncertain actions. An interrupted resume attempt
         // is left failed instead of creating a service-restart recovery loop.
@@ -412,6 +427,8 @@ impl Manager {
             registry.lock().unwrap().agent_counts()
         });
         Ok(Arc::new(Self {
+            #[cfg(windows)]
+            _native_instance_lock: native_instance_lock,
             bee: bee::Store::open(&config.state_dir)?,
             extensions: extensions::Extensions::open(&config.state_dir)?,
             config,

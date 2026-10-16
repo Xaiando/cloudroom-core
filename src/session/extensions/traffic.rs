@@ -59,6 +59,10 @@ struct Task {
     owned_pid: Option<u32>,
     #[serde(default)]
     owned_created: Option<u64>,
+    #[serde(default)]
+    core_pid: Option<u32>,
+    #[serde(default)]
+    core_created: Option<u64>,
     quiescent: bool,
     base_commit: String,
     base: Value,
@@ -80,6 +84,8 @@ pub(super) struct HiveTrafficCoordinator {
     gate: tokio::sync::Mutex<()>,
     active: Mutex<BTreeMap<String, watch::Sender<String>>>,
     file_changes: Arc<Mutex<()>>,
+    owned_jobs: Mutex<BTreeMap<String, crate::runtime::Handle>>,
+    _instance_lock: fs::File,
 }
 fn persist(path: &FsPath, data: &Data) -> io::Result<()> {
     use std::io::Write;
@@ -101,6 +107,15 @@ fn persist(path: &FsPath, data: &Data) -> io::Result<()> {
 }
 impl HiveTrafficCoordinator {
     pub fn open(root: &FsPath, file_changes: Arc<Mutex<()>>) -> io::Result<Self> {
+        use std::os::windows::fs::OpenOptionsExt as _;
+        let instance_lock = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .share_mode(0)
+            .unix_mode(0o600)
+            .open(root.join("traffic.lock"))?;
         let path = root.join("traffic.json");
         let mut data: Data = match fs::read(&path) {
             Ok(b) => serde_json::from_slice(&b)?,
@@ -128,6 +143,8 @@ impl HiveTrafficCoordinator {
             gate: tokio::sync::Mutex::new(()),
             active: Mutex::new(BTreeMap::new()),
             file_changes,
+            owned_jobs: Mutex::new(BTreeMap::new()),
+            _instance_lock: instance_lock,
         })
     }
     fn transact<T>(&self, f: impl FnOnce(&mut Data) -> Result<T>) -> Result<T> {
@@ -368,6 +385,8 @@ async fn create(State(m): State<Arc<Manager>>, Json(input): Json<Start>) -> Resu
         session_id: format!("cr_htc_{}_1", short(&id)),
         owned_pid: None,
         owned_created: None,
+        core_pid: Some(std::process::id()),
+        core_created: worker::process_identity(std::process::id())?,
         quiescent: false,
         base_commit,
         base,
@@ -502,11 +521,15 @@ async fn action(
             if c.active.lock().unwrap().len() >= 4 {
                 return Err(invalid("four isolated Work tasks are already active"));
             }
+            let core_created = worker::process_identity(std::process::id())?
+                .ok_or(invalid("Core process identity is unavailable"))?;
             c.update(&id, |t| {
                 t.attempt += 1;
                 t.session_id = format!("cr_htc_{}_{}", short(&id), t.attempt);
                 t.owned_pid = None;
                 t.owned_created = None;
+                t.core_pid = Some(std::process::id());
+                t.core_created = Some(core_created);
                 t.state = "preparing".into();
                 t.activity = "Retrying preserved isolated work".into();
                 t.error.clear();
@@ -583,8 +606,10 @@ pub(super) fn start_monitor(m: &Arc<Manager>) {
             let needed = {
                 let d = c.data.lock().unwrap();
                 d.engine.leases.values().any(|l| {
-                    matches!(l.state.as_str(), "reserved" | "active" | "verification")
-                        && (l.expires_at <= now() || l.heartbeat_at.saturating_add(10000) <= now())
+                    (leases::held(&l.state) && l.state != "recovery" && l.expires_at <= now())
+                        || matches!(l.state.as_str(), "reserved" | "active" | "verification")
+                            && (l.expires_at <= now()
+                                || l.heartbeat_at.saturating_add(10000) <= now())
                 }) || d
                     .engine
                     .reservations
@@ -659,6 +684,7 @@ mod tests {
         assert!(leases::overlap(&directory, &r));
         assert!(resource(&root, FsPath::new("../outside"), "file", false).is_err());
         let store = HiveTrafficCoordinator::open(&root, Arc::new(Mutex::new(()))).unwrap();
+        assert!(HiveTrafficCoordinator::open(&root, Arc::new(Mutex::new(()))).is_err());
         let owned = Owner {
             agent_id: "codex:fixture".into(),
             session_id: "owned".into(),

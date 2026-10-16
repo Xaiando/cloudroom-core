@@ -655,6 +655,10 @@ impl Handle {
     pub fn process_count(&self) -> Option<usize> {
         self.process.process_count()
     }
+    #[cfg(windows)]
+    pub(crate) async fn stop_owned(&self) -> io::Result<()> {
+        self.process.stop_owned().await
+    }
     pub fn same_process(&self, other: &Self) -> bool {
         self.process.progress.same_channel(&other.process.progress)
     }
