@@ -26,6 +26,12 @@ The shortcut is named **Cloud Bee** and starts both Core and the GUI. Keep the a
 
 The launcher starts Core if necessary and opens the desktop window. Closing the window leaves Core and its sessions running. Use `-Action Stop` to stop the backend.
 
+The double-click launcher selects 64-bit Windows PowerShell, including when opened
+from a 32-bit application. Local API checks bypass system proxies and redirects.
+If the port is already occupied and the check fails, Cloud Bee still opens so its
+connection screen can show the error and let you review settings. It does not stop
+the existing process, replace its credentials, or claim ownership of it.
+
 The GUI reads `%LOCALAPPDATA%\CloudroomCore\core.json` by default. Connection settings can load another settings file or accept a loopback address and token in memory. Tokens are never passed on the command line, saved by the GUI, or included in screenshots and test reports. The HTTP client disables redirects and proxies.
 
 Create a session with the selected model and reasoning level, optionally in a new project folder. Send messages, watch live output, expand command output, browse saved sessions, pause/resume the queue, interrupt a running turn, close a session, or open its folder. Enter sends; Shift+Enter adds a line. Closing a session preserves history.

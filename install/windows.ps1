@@ -9,6 +9,7 @@ param(
     [string]$CodexBinary,
     [string]$CodexHome = (Join-Path $env:USERPROFILE '.codex'),
     [string]$CoreBinary,
+    [string]$DesktopBinary,
     [ValidateRange(1024, 65535)][int]$Port = 9840,
     [ValidateSet('GET', 'POST', 'DELETE')][string]$Method = 'GET',
     [string]$ApiPath = '/v1/ready',
@@ -74,14 +75,33 @@ function Find-QwenBinary {
 
 function Invoke-CoreApi($Config, $Verb, $Path, $JsonBody) {
     if (!$Path.StartsWith('/v1/') -or $Path.Contains('://')) { throw 'ApiPath must start with /v1/.' }
-    $request = @{
-        Uri = ('http://' + $Config.CLOUDROOM_LISTEN + $Path)
-        Method = $Verb
-        Headers = @{ Authorization = ('Bearer ' + $Config.CLOUDROOM_TOKEN) }
-        TimeoutSec = 15
+    $baseUri = [Uri]('http://' + $Config.CLOUDROOM_LISTEN)
+    if (!$baseUri.IsLoopback -or $baseUri.UserInfo -or $baseUri.AbsolutePath -ne '/' -or $baseUri.Query -or $baseUri.Fragment) {
+        throw 'Core settings must use a localhost address.'
     }
-    if ($JsonBody) { $request.Body = [System.Text.Encoding]::UTF8.GetBytes($JsonBody); $request.ContentType = 'application/json' }
-    Invoke-RestMethod @request
+    # Match the desktop client: local credentials must never use a system proxy
+    # or follow a redirect. HttpClient also works in Windows PowerShell 5.1.
+    Add-Type -AssemblyName System.Net.Http
+    $handler = [System.Net.Http.HttpClientHandler]::new()
+    $handler.UseProxy = $false
+    $handler.AllowAutoRedirect = $false
+    $http = [System.Net.Http.HttpClient]::new($handler)
+    $http.Timeout = [TimeSpan]::FromSeconds(15)
+    $http.MaxResponseContentBufferSize = 32 * 1024 * 1024
+    $request = $null
+    $response = $null
+    try {
+        $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::new($Verb), [Uri]::new($baseUri, $Path))
+        $request.Headers.Authorization = [System.Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer', [string]$Config.CLOUDROOM_TOKEN)
+        if ($JsonBody) { $request.Content = [System.Net.Http.StringContent]::new($JsonBody, [System.Text.Encoding]::UTF8, 'application/json') }
+        $response = $http.SendAsync($request).GetAwaiter().GetResult()
+        if (!$response.IsSuccessStatusCode) { throw ('Core returned HTTP ' + [int]$response.StatusCode + '.') }
+        $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
+    } finally {
+        if ($response) { $response.Dispose() }
+        if ($request) { $request.Dispose() }
+        $http.Dispose()
+    }
 }
 
 function Get-OwnedProcess {
@@ -105,8 +125,10 @@ function Get-StartupDetails($Config) {
 }
 
 if ($Action -eq 'Gui') {
-    $desktopBinary = Join-Path $sourceRoot 'Cloudroom.Desktop.exe'
-    if (!(Test-Path -LiteralPath $desktopBinary)) { $desktopBinary = Join-Path $sourceRoot 'integrations\windows\publish\Cloudroom.Desktop.exe' }
+    if (!$DesktopBinary) {
+        $DesktopBinary = Join-Path $sourceRoot 'Cloudroom.Desktop.exe'
+        if (!(Test-Path -LiteralPath $DesktopBinary)) { $DesktopBinary = Join-Path $sourceRoot 'integrations\windows\publish\Cloudroom.Desktop.exe' }
+    }
     if (!(Test-Path -LiteralPath $desktopBinary)) { throw 'Publish the desktop app first. See integrations/windows/README.md.' }
     Write-Output "Using Core settings: $configPath"
     if (!(Test-Path -LiteralPath $configPath)) {
@@ -115,13 +137,17 @@ if ($Action -eq 'Gui') {
     if (!(Get-OwnedProcess)) {
         $guiConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
         $alreadyReady = $false
-        try { $alreadyReady = (Invoke-CoreApi $guiConfig 'GET' '/v1/ready' $null).ready } catch { }
+        $probeFailure = ''
+        try { $alreadyReady = (Invoke-CoreApi $guiConfig 'GET' '/v1/ready' $null).ready } catch { $probeFailure = $_.Exception.Message.Replace([string]$guiConfig.CLOUDROOM_TOKEN, '[redacted]') }
         if (!$alreadyReady) {
             $endpoint = [Uri]('http://' + $guiConfig.CLOUDROOM_LISTEN)
             $probe = New-Object System.Net.Sockets.TcpClient
             try { $portInUse = $probe.ConnectAsync($endpoint.Host, $endpoint.Port).Wait(500) -and $probe.Connected } catch { $portInUse = $false } finally { $probe.Dispose() }
-            if ($portInUse) { throw ('A process already uses ' + $guiConfig.CLOUDROOM_LISTEN + ', but it does not authenticate with these Core settings. Inspect the existing runtime before stopping it; Cloud Bee will not interrupt unknown work.') }
-            & $PSCommandPath -Action Start -DataDirectory $DataDirectory -CoreBinary $CoreBinary
+            if ($portInUse) {
+                Write-Warning ('An existing process is listening at ' + $guiConfig.CLOUDROOM_LISTEN + '. Opening Cloud Bee to show its connection status. No existing service was stopped. ' + $probeFailure)
+            } else {
+                & $PSCommandPath -Action Start -DataDirectory $DataDirectory -CoreBinary $CoreBinary
+            }
         }
     }
     Start-Process -FilePath $desktopBinary -ArgumentList @('--config', ('"' + $configPath + '"'))
