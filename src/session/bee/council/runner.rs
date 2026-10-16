@@ -177,11 +177,12 @@ async fn execute(
                         reply.state = "completed".into();
                         reply.text = text.clone();
                     }
-                    Err(_) => {
+                    Err(error) => {
                         reply.state = "failed".into();
-                        reply.text =
-                            "Model request failed or was cancelled; no provider tools executed."
-                                .into();
+                        reply.text = match error {
+                            Error::Conflict(message) => (*message).into(),
+                            _ => "Model request failed or was cancelled; inspect the CLI login or API connection.".into(),
+                        };
                     }
                 }
                 Ok(())

@@ -48,11 +48,61 @@ fn grok_clean(home: &FsPath) -> bool {
         return false;
     }
     match fs::read_to_string(home.join("config.toml")) {
-        Ok(text) => !["hook", "mcp", "plugin", "command", "agent", "include"]
-            .iter()
-            .any(|word| text.to_ascii_lowercase().contains(word)),
+        Ok(text) => grok_settings_safe(&text),
         Err(e) => e.kind() == io::ErrorKind::NotFound,
     }
+}
+fn grok_settings_safe(text: &str) -> bool {
+    // Fail closed on unknown TOML syntax/sections. Match keys rather than values:
+    // the stock marketplace URL contains "plugins" but is not an installed plugin.
+    let mut section = "";
+    for line in text
+        .lines()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.starts_with('#'))
+    {
+        if line.starts_with('[') {
+            if ![
+                "[cli]",
+                "[marketplace]",
+                "[[marketplace.sources]]",
+                "[ui]",
+                "[privacy]",
+                "[models]",
+            ]
+            .contains(&line)
+            {
+                return false;
+            }
+            section = line;
+            continue;
+        }
+        let Some((key, _)) = line.split_once('=') else {
+            return false;
+        };
+        let allowed: &[&str] = match section {
+            "[cli]" => &["installer"],
+            "[marketplace]" => &[
+                "default_skills_installs_purged",
+                "official_marketplace_auto_installed",
+            ],
+            "[[marketplace.sources]]" => &["name", "git"],
+            "[ui]" => &[
+                "max_thoughts_width",
+                "fork_secondary_model",
+                "yolo",
+                "compact_mode",
+                "permission_mode",
+            ],
+            "[privacy]" => &["privacy_banner_acked"],
+            "[models]" => &["default", "default_reasoning_effort"],
+            _ => &[],
+        };
+        if !allowed.contains(&key.trim()) {
+            return false;
+        }
+    }
+    true
 }
 pub(super) fn models(manager: &Manager) -> Vec<Profile> {
     let mut all = Vec::new();
@@ -281,7 +331,7 @@ async fn verify_codex(
     let app = Router::new().route("/v1/responses", post(move |headers: axum::http::HeaderMap, Json(body): Json<Value>| {
         let received = received.clone(); let expected = expected.clone();
         async move {
-            let safe = !headers.contains_key(axum::http::header::AUTHORIZATION) && body["tools"].as_array().is_some_and(Vec::is_empty) && body["model"] == expected;
+            let safe = !headers.contains_key(axum::http::header::AUTHORIZATION) && body.get("tools").is_none_or(|tools| tools.as_array().is_some_and(Vec::is_empty)) && body["model"] == expected;
             received.store(safe, Ordering::SeqCst);
             if !safe { return (axum::http::StatusCode::BAD_REQUEST, [("content-type", "text/plain")], "tool policy rejected".to_owned()); }
             let item = json!({"id":"fixture_message","type":"message","role":"assistant","content":[{"type":"output_text","text":"CLOUD_BEE_POLICY_OK"}]});
@@ -392,7 +442,17 @@ pub(super) async fn complete(
                     "Grok customizations must be disabled before tool-free Council use",
                 ));
             }
-            let path = root.join("prompt.json");
+            for parent in root.ancestors() {
+                let candidate = parent.join(".grok");
+                if candidate.exists() && candidate.canonicalize().ok() != p.home.canonicalize().ok()
+                {
+                    return Err(invalid(
+                        "Council scratch directory has ancestor Grok customizations",
+                    ));
+                }
+            }
+            // Grok interprets .json files as typed ACP input, not ordinary text.
+            let path = root.join("prompt.txt");
             fs::write(&path, prompt)?;
             let mut cmd = command(manager, &p.binary, root);
             cmd.args(["--no-auto-update", "--prompt-file"])
@@ -431,6 +491,15 @@ pub(super) async fn complete(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn grok_defaults_are_not_executable_customizations() {
+        assert!(grok_settings_safe(
+            "[ui]\nyolo = true\n[[marketplace.sources]]\nname = 'official'\ngit = 'https://example.com/plugins'\n"
+        ));
+        assert!(!grok_settings_safe("[hooks]\ncommand = 'execute'"));
+        assert!(!grok_settings_safe("[ui]\n\"hooks\" = {}"));
+        assert!(!grok_settings_safe("[models]\ncommand = 'execute'"));
+    }
     #[test]
     fn rejects_tools_and_incomplete_cli_output() {
         assert!(

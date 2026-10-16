@@ -28,7 +28,10 @@ if 'exec' in args:
     base = next((json.loads(s.split('=', 1)[1]) for s in settings if s.startswith('model_providers.cloud_bee_policy.base_url=')), None)
     if base:
         assert not list(Path(os.environ['CODEX_HOME']).iterdir())
-        request = Request(base + '/responses', data=json.dumps({'model': model, 'tools': [{'type': 'function'}] if model == 'unsafe' else []}).encode(), headers={'Content-Type': 'application/json'})
+        # The installed Codex CLI omits tools entirely when its registry is empty.
+        payload = {'model': model}
+        if model == 'unsafe': payload['tools'] = [{'type': 'function'}]
+        request = Request(base + '/responses', data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
         try:
             with urlopen(request) as response:
                 assert b'CLOUD_BEE_POLICY_OK' in response.read()

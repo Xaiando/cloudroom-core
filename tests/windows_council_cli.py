@@ -15,7 +15,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     binary = Path(sys.argv[1]).resolve()
-    with tempfile.TemporaryDirectory(prefix='cloud bee council cli ') as folder:
+    # Keep the simulated account away from the developer's real home customizations.
+    (ROOT / 'private').mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='cloud bee council cli ', dir=ROOT / 'private') as folder:
         root = Path(folder)
         home, repo = root / 'home', root / 'repo'
         repo.mkdir()
@@ -23,6 +25,7 @@ def main():
             (home / name).mkdir(parents=True)
             (home / name / 'auth.json').write_text('{}')
         (home / '.codex/models_cache.json').write_text(json.dumps({'identity': 'NEVER_EXPORT_THIS', 'models': [dict(slug=m, visibility='list') for m in ('fixture', 'unsafe')]}))
+        (home / '.grok/config.toml').write_text("[ui]\nyolo = true\n[[marketplace.sources]]\nname = 'official'\ngit = 'https://example.com/plugins'\n")
         wrapper = root / 'fixture.cmd'
         wrapper.write_text(f'@echo off\r\n"{sys.executable}" -u "{ROOT / "tests/council_cli_fixture.py"}" %*\r\n')
         with socket.socket() as sock:
